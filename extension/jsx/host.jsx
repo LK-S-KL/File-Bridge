@@ -449,7 +449,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.2.0";
+    ns.version = "0.3.0";
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };

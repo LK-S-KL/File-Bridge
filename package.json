@@ -1,6 +1,6 @@
 {
   "name": "rove-adobe-extension",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Rove media browser and ingest bridge for Adobe Premiere Pro and After Effects",
   "scripts": {

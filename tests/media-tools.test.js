@@ -151,9 +151,24 @@ test("maps pointer progress to the correct video sprite frame", () => {
   assert.equal(mediaTools.spriteFrameAtProgress(sprite, 1).backgroundPosition, "-720px -272px");
 });
 
+test("reports missing NAS media asynchronously instead of throwing on the UI thread", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-async-error-"));
+  const service = mediaTools.create({ fs, path, os: { homedir: () => fixture }, crypto, childProcess });
+  try {
+    const request = service.metadataFor(path.join(fixture, "offline.mov"));
+    assert.equal(typeof request.then, "function");
+    await assert.rejects(request, /ENOENT|FILE_NOT_FOUND/);
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
 test("probes media and creates a cached sprite and waveform without changing the source", async (t) => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-tools-"));
   const sourcePath = path.join(fixture, "source clip.mp4");
+  const movPath = path.join(fixture, "source clip.mov");
+  const transcodePath = path.join(fixture, "source clip_360p.mp4");
+  const transcodeTemporaryPath = path.join(fixture, ".source clip-test.rove-part.mp4");
   const service = mediaTools.create({
     fs,
     path,
@@ -179,9 +194,16 @@ test("probes media and creates a cached sprite and waveform without changing the
       "-c:a", "aac", "-b:a", "128k",
       "-shortest", "-y", sourcePath
     ], { timeout: 30000 });
+    childProcess.execFileSync(ffmpeg, [
+      "-hide_banner", "-loglevel", "error",
+      "-i", sourcePath,
+      "-map", "0", "-c", "copy", "-y", movPath
+    ], { timeout: 30000 });
 
     const before = fs.statSync(sourcePath);
     const beforeDigest = fileDigest(sourcePath);
+    const movBefore = fs.statSync(movPath);
+    const movBeforeDigest = fileDigest(movPath);
     const metadata = await service.metadataFor(sourcePath);
 
     assert.equal(metadata.videoCodecShort, "mpeg4");
@@ -208,10 +230,57 @@ test("probes media and creates a cached sprite and waveform without changing the
     assert.equal(spriteMetadata.resolution, "960 × 408");
     assert.equal(waveformMetadata.resolution, "600 × 120");
 
+    const ordinaryPreview = await service.previewProxyFor(sourcePath, "source");
+    assert.equal(ordinaryPreview, sourcePath, "browser-compatible source media should not be transcoded");
+
+    const boundedPreview = await service.previewProxyFor(sourcePath, "360");
+    const boundedPreviewMetadata = await service.metadataFor(boundedPreview);
+    assert.equal(boundedPreviewMetadata.resolution, "320 × 180", "playback proxies must not upscale a smaller source");
+
+    const movPreview = await service.previewProxyFor(movPath, "source");
+    assert.notEqual(movPreview, movPath, "MOV preview should use a browser-compatible cache proxy");
+    assert.equal(path.extname(movPreview), ".mp4");
+    assert.equal(fs.existsSync(movPreview), true);
+    assert.ok(fs.statSync(movPreview).size > 0);
+    assert.equal(await service.previewProxyFor(movPath, "source"), movPreview, "MOV proxy should be reused from cache");
+
+    const audioPreview = await service.audioProxyFor(sourcePath);
+    assert.equal(path.extname(audioPreview), ".m4a");
+    assert.equal(fs.existsSync(audioPreview), true);
+    assert.ok(fs.statSync(audioPreview).size > 0);
+
+    const framePath = await service.frameFor(sourcePath, 0.75, 160, 90);
+    assert.equal(path.extname(framePath), ".png");
+    assert.equal(fs.existsSync(framePath), true);
+    assert.ok(fs.statSync(framePath).size > 0);
+    const frameMetadata = await service.metadataFor(framePath);
+    assert.equal(frameMetadata.resolution, "160 × 90");
+
+    const projectFramePath = await service.captureFrameForProject(sourcePath, 0.75);
+    assert.equal(path.extname(projectFramePath), ".png");
+    assert.equal(projectFramePath.startsWith(path.join(fixture, "Pictures", "fnOS Bridge Captures")), true);
+    assert.equal(fs.existsSync(projectFramePath), true);
+    const projectFrameMetadata = await service.metadataFor(projectFramePath);
+    assert.equal(projectFrameMetadata.resolution, "320 × 180");
+
+    fs.writeFileSync(transcodePath, "existing user file", "utf8");
+    await service.transcodeTo(sourcePath, transcodeTemporaryPath, "360");
+    const transcoded = await service.claimTranscodeOutput(transcodeTemporaryPath, sourcePath, "360");
+    assert.equal(transcoded, path.join(fixture, "source clip_360p-2.mp4"));
+    assert.equal(fs.readFileSync(transcodePath, "utf8"), "existing user file");
+    assert.equal(fs.existsSync(transcoded), true);
+    assert.ok(fs.statSync(transcoded).size > 0);
+    const transcodeMetadata = await service.metadataFor(transcoded);
+    assert.equal(transcodeMetadata.resolution, "640 × 360");
+
     const after = fs.statSync(sourcePath);
     assert.equal(after.size, before.size);
     assert.equal(after.mtimeMs, before.mtimeMs);
     assert.equal(fileDigest(sourcePath), beforeDigest);
+    const movAfter = fs.statSync(movPath);
+    assert.equal(movAfter.size, movBefore.size);
+    assert.equal(movAfter.mtimeMs, movBefore.mtimeMs);
+    assert.equal(fileDigest(movPath), movBeforeDigest);
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }

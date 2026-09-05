@@ -15,7 +15,11 @@
     preferences: {
       sortBy: "modified",
       sortDirection: "desc",
-      zoom: 1
+      zoom: 128,
+      scanMode: "single",
+      activeRootId: "",
+      searchOpen: false,
+      colorManagementNoticeSeen: false
     }
   };
 
@@ -46,7 +50,16 @@
     if (state.preferences && typeof state.preferences === "object") {
       result.preferences.sortBy = state.preferences.sortBy || result.preferences.sortBy;
       result.preferences.sortDirection = state.preferences.sortDirection === "asc" ? "asc" : "desc";
-      result.preferences.zoom = Math.max(0, Math.min(2, Number(state.preferences.zoom) || 0));
+      /* Migrate the original three-position 0/1/2 preference to pixel sizing. */
+      if (Number(state.preferences.zoom) >= 0 && Number(state.preferences.zoom) <= 2) {
+        result.preferences.zoom = [96, 128, 176][Number(state.preferences.zoom)] || 128;
+      } else {
+        result.preferences.zoom = Math.max(88, Math.min(260, Number(state.preferences.zoom) || 128));
+      }
+      result.preferences.scanMode = ["single", "selected", "all"].indexOf(state.preferences.scanMode) !== -1 ? state.preferences.scanMode : result.preferences.scanMode;
+      result.preferences.activeRootId = String(state.preferences.activeRootId || "");
+      result.preferences.searchOpen = state.preferences.searchOpen === true;
+      result.preferences.colorManagementNoticeSeen = state.preferences.colorManagementNoticeSeen === true;
     }
     return result;
   }
@@ -57,6 +70,38 @@
     var os = runtime.os;
     var directory = path.join(os.homedir(), "Library", "Application Support", "fnOS Bridge");
     var statePath = path.join(directory, "state.json");
+    var lockPath = path.join(directory, ".state-write-lock");
+
+    function pause(milliseconds) {
+      var start;
+      if (typeof SharedArrayBuffer === "function" && typeof Atomics === "object" && typeof Atomics.wait === "function") {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+        return;
+      }
+      start = Date.now(); while (Date.now() - start < milliseconds) {}
+    }
+
+    function acquireLock() {
+      var attempt;
+      var stat;
+      fs.mkdirSync(directory, { recursive: true });
+      for (attempt = 0; attempt < 100; attempt += 1) {
+        try { fs.mkdirSync(lockPath); return; }
+        catch (error) {
+          if (error.code !== "EEXIST") { throw error; }
+          try {
+            stat = fs.statSync(lockPath);
+            if (Date.now() - stat.mtimeMs > 5000) { fs.rmdirSync(lockPath); continue; }
+          } catch (ignoreStaleLockError) {}
+          pause(5);
+        }
+      }
+      throw new Error("STATE_BUSY");
+    }
+
+    function releaseLock() {
+      try { fs.rmdirSync(lockPath); } catch (ignoreReleaseError) {}
+    }
 
     function load() {
       try {
@@ -79,13 +124,18 @@
     }
 
     function mutate(mutator) {
-      var latest = load();
-      mutator(latest);
-      return save(latest);
+      var latest;
+      acquireLock();
+      try {
+        latest = load();
+        mutator(latest);
+        return save(latest);
+      } finally { releaseLock(); }
     }
 
     return {
       path: statePath,
+      lockPath: lockPath,
       load: load,
       save: save,
       mutate: mutate

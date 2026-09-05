@@ -57,7 +57,7 @@ function setVersion(version) {
     manifestPath,
     current.manifest
       .replace(/ExtensionBundleVersion="[^"]+"/, `ExtensionBundleVersion="${version}"`)
-      .replace(/(<Extension Id="[^"]+" Version=")[^"]+("\/?>)/, `$1${version}$2`)
+      .replace(/(<Extension Id="[^"]+" Version=")[^"]+("[^>]*>)/, `$1${version}$2`)
   );
   fs.writeFileSync(hostPath, current.host.replace(/ns\.version\s*=\s*"[^"]+"/, `ns.version = "${version}"`));
   console.log(`Updated Rove version to ${version}`);
