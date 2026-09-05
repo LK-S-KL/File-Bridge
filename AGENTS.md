@@ -1,6 +1,6 @@
-# Rove Maintenance Rules
+# LK‘s File Bridge Maintenance Rules
 
-- Product name: Rove.
+- Product name: LK‘s File Bridge.
 - Keep `main` runnable and scope each change to one user-visible goal.
 - Run `npm test` before declaring work complete.
 - Keep CEP panel JavaScript compatible with its embedded Chromium runtime.

@@ -1,10 +1,10 @@
-/* Rove host adapter. ES3-compatible for Premiere Pro and After Effects. */
+/* LK‘s File Bridge host adapter. ES3-compatible for Premiere Pro and After Effects. */
 
 $.global.SeekBridge = $.global.SeekBridge || {};
 
 (function (ns) {
-    var FOLDER_NAME = "Rove";
-    var LEGACY_FOLDER_NAMES = { "Seek Bridge": true, "Seek Bridge MVP": true, "fnOS Bridge": true };
+    var FOLDER_NAME = "LK‘s File Bridge";
+    var LEGACY_FOLDER_NAMES = { "Rove": true, "Seek Bridge": true, "Seek Bridge MVP": true, "fnOS Bridge": true };
 
     function quoteJson(value) {
         var input = String(value);
@@ -235,7 +235,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
             bin = pproFindRootBin(project);
         }
         if (!bin) {
-            throw makeError("BIN_CREATE_FAILED", "Premiere could not create the Rove bin.");
+            throw makeError("BIN_CREATE_FAILED", "Premiere could not create the LK‘s File Bridge bin.");
         }
         return bin;
     }
@@ -400,7 +400,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         footage = aeFindByPath(project, mediaFile);
 
         try {
-            app.beginUndoGroup(addToComp ? "Rove: Add to Composition" : "Rove: Import Media");
+            app.beginUndoGroup(addToComp ? "LK‘s File Bridge: Add to Composition" : "LK‘s File Bridge: Import Media");
             undoOpen = true;
             if (!footage) {
                 footage = project.importFile(new ImportOptions(mediaFile));
@@ -449,7 +449,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.3.0";
+    ns.version = "0.4.0";
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };

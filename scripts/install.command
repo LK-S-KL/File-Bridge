@@ -23,6 +23,6 @@ fi
 
 defaults write com.adobe.CSXS.12 PlayerDebugMode -string "1"
 
-print "Rove 已安装。"
+print "LK‘s File Bridge 已安装。"
 print "请完整退出并重新打开 Premiere Pro 或 After Effects。"
-print "然后选择：窗口 > 扩展 > Rove"
+print "然后选择：窗口 > 扩展 > LK‘s File Bridge"

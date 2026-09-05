@@ -1,4 +1,4 @@
-# 使用 AI 修改 Rove 的检查清单
+# 使用 AI 修改 LK‘s File Bridge 的检查清单
 
 每次只给 AI 一个明确目标，并要求它遵守 `AGENTS.md`。
 

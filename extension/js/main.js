@@ -79,7 +79,7 @@
     [
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "mountStatus", "rootLabel",
       "searchToggleButton", "searchPopover", "searchInput", "clearSearchButton", "favoriteOnlyButton", "sortSelect", "sortDirectionButton", "filterButton",
-      "filterBadge", "zoomRange", "resultCount", "notice", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
+      "filterBadge", "zoomRange", "resultCount", "notice", "selectionDock", "selectionTitle", "selectionMeta", "selectionPreviewButton", "selectionImportButton", "selectionPlaceButton", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
       "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "scanModeSelect", "scanModeHint", "filterPopover",
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "rootFilter", "metadataOnlyFilter",
       "contextMenu", "contextPlaceButton", "contextLabelChoices", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
@@ -327,6 +327,19 @@
     elements.assetGrid.addEventListener("mouseover", beginSpritePreview);
     elements.assetGrid.addEventListener("mousemove", scrubSpritePreview);
     elements.assetGrid.addEventListener("mouseout", endSpritePreview);
+
+    elements.selectionPreviewButton.addEventListener("click", function () {
+      var asset = selectedAsset();
+      if (asset) { openViewer(asset); }
+    });
+    elements.selectionImportButton.addEventListener("click", function () {
+      var asset = selectedAsset();
+      if (asset) { runHostActionForAsset(asset, false).catch(function () {}); }
+    });
+    elements.selectionPlaceButton.addEventListener("click", function () {
+      var asset = selectedAsset();
+      if (asset) { runHostActionForAsset(asset, true).catch(function () {}); }
+    });
 
     elements.contextMenu.addEventListener("click", handleContextCommand);
     elements.contextMenu.addEventListener("mouseover", function (event) {
@@ -702,6 +715,7 @@
   }
 
   function assetForId(id) { return id ? state.assetById[id] || null : null; }
+  function selectedAsset() { return assetForId(state.selectedId); }
   function readAdvancedFilters() {
     state.filters.size = elements.sizeFilter.value;
     state.filters.extensions = elements.extensionFilter.value.toLowerCase().split(/[\s,，]+/).filter(Boolean).map(function (value) { return value.replace(/^\./, ""); });
@@ -824,6 +838,7 @@
     elements.assetGrid.appendChild(fragment);
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
     if (!selectedVisible && state.selectedId) { state.selectedId = null; }
+    renderSelectionDock();
     if (!state.visibleAssets.length) {
       elements.assetGrid.hidden = true;
       showEmpty(state.assets.length ? "没有匹配的素材" : "没有可用素材", state.assets.length ? "调整搜索、收藏或筛选条件。" : "添加一个包含视频、图片、音频或 LUT 的素材位置。");
@@ -982,6 +997,25 @@
     if (!asset) { return; }
     state.selectedId = id;
     Array.prototype.forEach.call(elements.assetGrid.querySelectorAll(".asset-card"), function (card) { card.classList.toggle("is-selected", card.getAttribute("data-asset-id") === id); });
+    renderSelectionDock();
+  }
+
+  function renderSelectionDock() {
+    var asset = selectedAsset();
+    var local;
+    if (!asset || !findCard(asset.domId)) {
+      elements.selectionDock.hidden = true;
+      return;
+    }
+    local = localMetaFor(asset);
+    elements.selectionDock.hidden = false;
+    elements.selectionTitle.textContent = asset.name;
+    elements.selectionTitle.title = asset.name;
+    elements.selectionMeta.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size) + (local.label && local.label !== "none" ? " · " + local.label : "");
+    elements.selectionPreviewButton.textContent = asset.type === "lut" ? "预览 LUT" : "预览";
+    elements.selectionImportButton.hidden = state.hostId === "BROWSER" || asset.type === "lut";
+    elements.selectionPlaceButton.hidden = state.hostId === "BROWSER" || asset.type === "lut";
+    elements.selectionPlaceButton.textContent = state.hostId === "AEFT" ? "加入合成" : "放到播放头";
   }
 
   function findCard(id) {

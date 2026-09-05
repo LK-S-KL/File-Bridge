@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0"
   ExtensionBundleId="com.fnnas.seekbridge.mvp"
-  ExtensionBundleVersion="0.3.0"
-  ExtensionBundleName="Rove"
+  ExtensionBundleVersion="0.4.0"
+  ExtensionBundleName="LK‘s File Bridge"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.fnnas.seekbridge.mvp.panel" Version="0.3.0" />
+    <Extension Id="com.fnnas.seekbridge.mvp.panel" Version="0.4.0" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -37,7 +37,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>Rove</Menu>
+          <Menu>LK‘s File Bridge</Menu>
           <Geometry>
             <Size>
               <Height>680</Height>

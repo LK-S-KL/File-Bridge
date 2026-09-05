@@ -29,7 +29,7 @@ const manifest = fs.readFileSync(manifestPath, "utf8");
 assert.match(manifest, /Host Name="PPRO"/);
 assert.match(manifest, /Host Name="AEFT"/);
 assert.match(manifest, /RequiredRuntime Name="CSXS" Version="12\.0"/);
-assert.match(manifest, /ExtensionBundleName="Rove"/);
+assert.match(manifest, /ExtensionBundleName="LK‘s File Bridge"/);
 
 const mainSource = fs.readFileSync(mainPath, "utf8");
 const mediaToolsSource = fs.readFileSync(mediaToolsPath, "utf8");

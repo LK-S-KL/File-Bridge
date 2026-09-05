@@ -20,7 +20,7 @@ function readVersions() {
   const hostMatch = host.match(/ns\.version\s*=\s*"([^"]+)"/);
 
   if (!bundleMatch || !extensionMatch || !hostMatch) {
-    fail("Unable to find every Rove version field.");
+    fail("Unable to find every LK‘s File Bridge version field.");
   }
 
   return {
@@ -60,7 +60,7 @@ function setVersion(version) {
       .replace(/(<Extension Id="[^"]+" Version=")[^"]+("[^>]*>)/, `$1${version}$2`)
   );
   fs.writeFileSync(hostPath, current.host.replace(/ns\.version\s*=\s*"[^"]+"/, `ns.version = "${version}"`));
-  console.log(`Updated Rove version to ${version}`);
+  console.log(`Updated LK‘s File Bridge version to ${version}`);
   check();
 }
 

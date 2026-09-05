@@ -1,6 +1,6 @@
-# Rove
+# LK‘s File Bridge
 
-Rove 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的飞牛 NAS 素材面板。当前版本直接读取已经挂载到 Mac 的 SMB 文件夹，不调用 Seek 私有接口。
+LK‘s File Bridge 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的飞牛 NAS 素材面板。当前版本直接读取已经挂载到 Mac 的 SMB 文件夹，不调用 Seek 私有接口。
 
 ## v0.3 能力
 
@@ -28,7 +28,7 @@ Rove 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的飞牛 NAS 素�
 
 ## LUT 与 Lumetri 的边界
 
-Premiere CEP 没有稳定的公开接口，可让扩展面板把任意 `.cube` 路径直接交给 Lumetri 并返回原生渲染画面。Rove 因此在 Canvas 中做 8-bit sRGB 三线性插值预览，用于挑选方向；它不会伪装成最终调色结果。只有用户明确点击“复制到 Lumetri LUT 目录”时，才会写入 Adobe 用户级 `Creative` LUT 目录，重启 Premiere 后可在 Lumetri 中选择。
+Premiere CEP 没有稳定的公开接口，可让扩展面板把任意 `.cube` 路径直接交给 Lumetri 并返回原生渲染画面。LK‘s File Bridge 因此在 Canvas 中做 8-bit sRGB 三线性插值预览，用于挑选方向；它不会伪装成最终调色结果。只有用户明确点击“复制到 Lumetri LUT 目录”时，才会写入 Adobe 用户级 `Creative` LUT 目录，重启 Premiere 后可在 Lumetri 中选择。
 
 ## Adobe 拖拽边界
 
@@ -59,7 +59,22 @@ After Effects 没有可靠的扩展面板文件拖入协议，因此 AE 中卡�
 
 完整退出并重新打开 Adobe 软件，然后选择：
 
-`窗口 > 扩展 > Rove`
+`窗口 > 扩展 > LK‘s File Bridge`
+
+## 内测分发
+
+运行：
+
+```bash
+npm run package:internal
+```
+
+脚本会在桌面生成：
+
+- `LK‘s File Bridge 0.4.0 内测版.dmg`
+- `LK‘s File Bridge 0.4.0 内测版.zip`
+
+这是未签名 CEP 内测包。给同事时优先发送 DMG；双击后运行“安装 LK‘s File Bridge.command”，再重启 Adobe 软件。安装脚本会自动开启 CSXS 12 的 PlayerDebugMode，并在覆盖旧版本前保留带时间戳的备份。
 
 ## 开发检查
 
