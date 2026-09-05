@@ -9,4 +9,3 @@
 - Never commit credentials, tokens, signing certificates, private NAS details, user media, generated packages, or local caches.
 - Keep the version in `package.json`, `extension/CSXS/manifest.xml`, and `extension/jsx/host.jsx` synchronized.
 - Update `CHANGELOG.md` for every user-visible change.
-
