@@ -29,3 +29,7 @@ tmp/
 *.ccx
 *.zxp
 
+# Local UI verification captures
+tests/panel-*.png
+tests/v02-*.png
+tests/sample-thumb.jpg
