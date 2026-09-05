@@ -166,6 +166,7 @@
     var maxFiles = settings.maxFiles || 2500;
     var maxDepth = typeof settings.maxDepth === "number" ? settings.maxDepth : 8;
     var batchSize = settings.batchSize || 36;
+    var includeDirectories = settings.includeDirectories === true;
     var cancelSignal = settings.cancelSignal || null;
     var stack = [{ directory: rootPath, depth: 0 }];
     var assets = [];
@@ -225,13 +226,13 @@
           }
         }
 
-        function addFile(entry, absolutePath, mediaType) {
+        function addItem(entry, absolutePath, mediaType) {
           pendingStats += 1;
           fs.stat(absolutePath, function (statError, stat) {
             var relativePath;
             if (completed) { return; }
             pendingStats -= 1;
-            if (statError || !stat || !stat.isFile()) {
+            if (statError || !stat || (mediaType === "folder" ? !stat.isDirectory() : !stat.isFile())) {
               warnings.push(absolutePath);
             } else if (assets.length < maxFiles) {
               relativePath = path.relative(rootPath, absolutePath);
@@ -243,7 +244,7 @@
                 folder: path.dirname(relativePath) === "." ? "根目录" : path.dirname(relativePath),
                 extension: extensionOf(entry.name),
                 type: mediaType,
-                size: stat.size,
+                size: mediaType === "folder" ? 0 : stat.size,
                 modifiedMs: stat.mtimeMs || stat.mtime.getTime()
               });
             }
@@ -260,12 +261,13 @@
             if (entry.isDirectory()) {
               if (current.depth < maxDepth && !SKIP_DIRECTORIES[entry.name]) {
                 stack.push({ directory: absolutePath, depth: current.depth + 1 });
+                if (includeDirectories) { addItem(entry, absolutePath, "folder"); }
               }
               return;
             }
             if (!entry.isFile()) { return; }
             mediaType = typeOf(entry.name);
-            if (mediaType) { addFile(entry, absolutePath, mediaType); }
+            if (mediaType) { addItem(entry, absolutePath, mediaType); }
           }(entries[i]));
         }
         continueScanning();

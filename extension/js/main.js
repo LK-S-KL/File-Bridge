@@ -2,8 +2,7 @@
   "use strict";
 
   var DEFAULT_ROOT = "/Volumes/团队文件-剪辑共享/0813-MIniMax";
-  var MAX_SCAN_FILES = 2500;
-  var MAX_RENDERED_ASSETS = 480;
+  var MAX_SCAN_FILES = 10000;
   var LABELS = ["none", "red", "orange", "yellow", "green", "blue", "purple"];
 
   var nodeAvailable = typeof require === "function";
@@ -17,18 +16,25 @@
   var lutTools = nodeAvailable ? FnOSLutTools.create({ fs: fs, path: path }) : null;
   var stateStore = nodeAvailable ? FnOSStateStore.create({ fs: fs, path: path, os: os }) : null;
   var fileOps = nodeAvailable ? FnOSFileOps.create({ fs: fs, path: path, childProcess: childProcess }) : null;
+  var assetOps = nodeAvailable ? FnOSAssetOps.create({ fs: fs, path: path, childProcess: childProcess }) : null;
+  var projectPackager = nodeAvailable ? FnOSProjectPackager.create({ fs: fs, path: path, platform: process.platform }) : null;
   var persisted = stateStore ? stateStore.load() : FnOSStateStore.defaults();
 
   var state = {
     hostId: "BROWSER",
     roots: persisted.roots,
     assetMeta: persisted.assetMeta,
+    libraryCache: persisted.libraryCache || {},
     preferences: persisted.preferences,
     assets: [],
     visibleAssets: [],
     assetById: {},
     selectedId: null,
+    selectedIds: {},
+    selectionAnchorId: null,
     contextId: null,
+    folderScope: null,
+    copiedLabel: null,
     filter: "all",
     favoriteOnly: false,
     query: "",
@@ -51,13 +57,20 @@
     metadata: null,
     inPoint: 0,
     outPoint: null,
+    hasIn: false,
+    hasOut: false,
     loop: false,
     profile: "source",
     audioProxyPath: "",
     audioProxyStatus: "idle",
     loadToken: 0,
     frameRequest: 0,
-    isSeeking: false
+    isSeeking: false,
+    timeDisplayMode: "timecode",
+    sourcePlayable: false,
+    autoProxyReady: "",
+    autoKeepSource: false,
+    autoTimer: null
   };
 
   var lutState = { asset: null, lut: null, original: null, processed: null, renderFrame: 0 };
@@ -66,26 +79,28 @@
   var renderGeneration = 0;
   var visualObserver = null;
   var altPressed = false;
+  var audioHover = { timer: null, media: null, assetId: null };
 
   var elements = {};
   var filterTimer = null;
   var noticeTimer = null;
   var preferenceTimer = null;
   var metadataHoverToken = 0;
+  var resizeFrame = 0;
 
   function byId(id) { return document.getElementById(id); }
 
   function cacheElements() {
     [
-      "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "mountStatus", "rootLabel",
-      "searchToggleButton", "searchPopover", "searchInput", "clearSearchButton", "favoriteOnlyButton", "sortSelect", "sortDirectionButton", "filterButton",
-      "filterBadge", "zoomRange", "resultCount", "notice", "selectionDock", "selectionTitle", "selectionMeta", "selectionPreviewButton", "selectionImportButton", "selectionPlaceButton", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
-      "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "scanModeSelect", "scanModeHint", "filterPopover",
-      "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "rootFilter", "metadataOnlyFilter",
-      "contextMenu", "contextPlaceButton", "contextLabelChoices", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
-      "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerBusy",
-      "viewerControls", "viewerFooter", "viewerScrubber", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode", "markInButton",
-      "markOutButton", "loopButton", "screenshotButton", "proxySelect", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
+      "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
+      "selectAllButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "packageProjectButton",
+      "searchInput", "clearSearchButton", "filterBadge", "zoomRange", "resultCount", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "selectionDock", "selectionTitle", "selectionMeta", "selectionPreviewButton", "selectionImportButton", "selectionPlaceButton", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
+      "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "toggleAllRootsButton", "createFolderButton", "filterPopover",
+      "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
+      "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
+      "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerMediaLayer", "viewerBusy",
+      "viewerTimeline", "viewerScrubber", "viewerInMark", "viewerOutMark", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode", "markInButton",
+      "markOutButton", "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
       "closeLutViewerButton", "lutCanvas", "lutSplitRange", "lutOpacityRange", "installLutButton", "fileActionDialog", "dialogTitle",
       "dialogMessage", "renameField", "renameInput", "dialogCancelButton", "dialogConfirmButton"
     ].forEach(function (id) { elements[id] = byId(id); });
@@ -197,8 +212,8 @@
       state.hostId = "BROWSER";
     }
     elements.hostLabel.textContent = state.hostId === "PPRO" ? "Premiere Pro" : state.hostId === "AEFT" ? "After Effects" : "界面预览";
-    elements.contextPlaceButton.textContent = state.hostId === "AEFT" ? "加入当前合成" : "放到播放头";
     elements.screenshotButton.hidden = state.hostId !== "PPRO";
+    elements.packageProjectButton.hidden = state.hostId !== "PPRO";
   }
 
   function bindEvents() {
@@ -209,6 +224,9 @@
     });
     elements.addFolderButton.addEventListener("click", chooseFolder);
     elements.addFolderFromPopover.addEventListener("click", chooseFolder);
+    elements.upFolderButton.addEventListener("click", leaveFolderScope);
+    elements.toggleAllRootsButton.addEventListener("click", toggleAllRoots);
+    elements.createFolderButton.addEventListener("click", openCreateFolderDialog);
     elements.locationsList.addEventListener("click", function (event) {
       var remove = event.target.closest("button[data-root-remove]");
       var select = event.target.closest("button[data-root-select]");
@@ -219,23 +237,9 @@
       var toggle = event.target.closest("input[data-root-toggle]");
       if (toggle) { setRootEnabled(toggle.getAttribute("data-root-toggle"), toggle.checked); }
     });
-    elements.scanModeSelect.value = state.preferences.scanMode;
-    elements.scanModeSelect.addEventListener("change", function () {
-      state.preferences.scanMode = elements.scanModeSelect.value;
-      persistPreferences();
-      renderLocations();
-      scanAssets();
-    });
-
-    elements.searchToggleButton.addEventListener("click", function (event) {
-      event.stopPropagation();
-      setSearchOpen(elements.searchPopover.hidden);
-    });
-
     elements.searchInput.addEventListener("input", function () {
       state.query = elements.searchInput.value;
       elements.searchField.classList.toggle("has-value", !!state.query);
-      elements.searchToggleButton.classList.toggle("is-active", !!state.query);
       clearTimeout(filterTimer);
       filterTimer = setTimeout(applyFilters, 90);
     });
@@ -243,7 +247,6 @@
       elements.searchInput.value = "";
       state.query = "";
       elements.searchField.classList.remove("has-value");
-      elements.searchToggleButton.classList.remove("is-active");
       applyFilters();
       elements.searchInput.focus();
     });
@@ -260,9 +263,12 @@
       state.favoriteOnly = !state.favoriteOnly;
       elements.favoriteOnlyButton.classList.toggle("is-active", state.favoriteOnly);
       elements.favoriteOnlyButton.setAttribute("aria-pressed", state.favoriteOnly ? "true" : "false");
-      elements.favoriteOnlyButton.innerHTML = state.favoriteOnly ? "&#9733;" : "&#9734;";
       applyFilters();
     });
+    elements.selectAllButton.addEventListener("click", toggleSelectAllAssets);
+    elements.sortButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.sortPopover, elements.sortButton); });
+    elements.viewModeButton.addEventListener("click", toggleViewMode);
+    elements.packageProjectButton.addEventListener("click", packageCurrentProject);
     elements.sortSelect.value = state.preferences.sortBy;
     elements.sortSelect.addEventListener("change", function () {
       state.preferences.sortBy = elements.sortSelect.value;
@@ -282,6 +288,13 @@
     [elements.sizeFilter, elements.extensionFilter, elements.labelFilter, elements.rootFilter, elements.metadataOnlyFilter].forEach(function (control) {
       control.addEventListener(control === elements.extensionFilter ? "input" : "change", readAdvancedFilters);
     });
+    elements.labelFilterChoices.addEventListener("click", function (event) {
+      var button = event.target.closest("button[data-filter-label]");
+      if (!button) { return; }
+      elements.labelFilter.value = button.getAttribute("data-filter-label");
+      Array.prototype.forEach.call(elements.labelFilterChoices.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item === button); });
+      readAdvancedFilters();
+    });
     elements.resetFiltersButton.addEventListener("click", resetAdvancedFilters);
     elements.zoomRange.value = String(state.preferences.zoom);
     elements.zoomRange.addEventListener("input", function () {
@@ -298,24 +311,28 @@
         toggleFavorite(assetForId(card.getAttribute("data-asset-id")));
         return;
       }
-      if (card) { selectAsset(card.getAttribute("data-asset-id")); }
+      if (card) { selectAsset(card.getAttribute("data-asset-id"), { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }); }
     });
     elements.assetGrid.addEventListener("dblclick", function (event) {
       var card = closestCard(event.target);
       if (card && !event.target.closest("button")) {
-        selectAsset(card.getAttribute("data-asset-id"));
-        openViewer(assetForId(card.getAttribute("data-asset-id")));
+        var doubleAsset = assetForId(card.getAttribute("data-asset-id"));
+        selectAsset(card.getAttribute("data-asset-id"), { only: true });
+        if (doubleAsset && doubleAsset.type === "folder") { enterFolderScope(doubleAsset); }
+        else { openViewer(doubleAsset); }
       }
     });
     elements.assetGrid.addEventListener("keydown", function (event) {
       var card = closestCard(event.target);
       if (!card) { return; }
       if (event.key === "Enter") {
-        selectAsset(card.getAttribute("data-asset-id"));
-        openViewer(assetForId(card.getAttribute("data-asset-id")));
+        var keyAsset = assetForId(card.getAttribute("data-asset-id"));
+        selectAsset(card.getAttribute("data-asset-id"), { only: true });
+        if (keyAsset && keyAsset.type === "folder") { enterFolderScope(keyAsset); }
+        else { openViewer(keyAsset); }
       } else if (event.key === " ") {
         event.preventDefault();
-        selectAsset(card.getAttribute("data-asset-id"));
+        selectAsset(card.getAttribute("data-asset-id"), { toggle: true });
       }
     });
     elements.assetGrid.addEventListener("contextmenu", openContextMenu);
@@ -327,18 +344,19 @@
     elements.assetGrid.addEventListener("mouseover", beginSpritePreview);
     elements.assetGrid.addEventListener("mousemove", scrubSpritePreview);
     elements.assetGrid.addEventListener("mouseout", endSpritePreview);
+    elements.assetGrid.addEventListener("dragover", handleLibraryDragOver);
+    elements.assetGrid.addEventListener("dragleave", function (event) { var card = closestCard(event.target); if (card && (!event.relatedTarget || !card.contains(event.relatedTarget))) { card.classList.remove("is-drop-target"); } });
+    elements.assetGrid.addEventListener("drop", handleLibraryDrop);
 
     elements.selectionPreviewButton.addEventListener("click", function () {
       var asset = selectedAsset();
       if (asset) { openViewer(asset); }
     });
     elements.selectionImportButton.addEventListener("click", function () {
-      var asset = selectedAsset();
-      if (asset) { runHostActionForAsset(asset, false).catch(function () {}); }
+      runHostActionForAssets(selectedAssets(), false, "current").catch(function () {});
     });
     elements.selectionPlaceButton.addEventListener("click", function () {
-      var asset = selectedAsset();
-      if (asset) { runHostActionForAsset(asset, true).catch(function () {}); }
+      runHostActionForAssets(selectedAssets(), true, "current").catch(function () {});
     });
 
     elements.contextMenu.addEventListener("click", handleContextCommand);
@@ -353,9 +371,10 @@
     });
     elements.contextLabelChoices.addEventListener("click", function (event) {
       var choice = event.target.closest("button[data-label]");
-      var asset = assetForId(state.contextId);
-      if (choice && asset) {
-        setColorLabel(asset, choice.getAttribute("data-label"));
+      var assets = selectedAssets();
+      if (choice && assets.length) {
+        assets.forEach(function (asset) { setColorLabel(asset, choice.getAttribute("data-label"), true); });
+        if (state.filters.label !== "all") { applyFilters(); } else { renderAssets(); }
         closeContextMenu();
       }
     });
@@ -369,7 +388,11 @@
     elements.markInButton.addEventListener("click", markViewerIn);
     elements.markOutButton.addEventListener("click", markViewerOut);
     elements.loopButton.addEventListener("click", toggleViewerLoop);
-    elements.proxySelect.addEventListener("change", function () { loadViewerProfile(elements.proxySelect.value, true); });
+    elements.qualityButton.addEventListener("click", function (event) { event.stopPropagation(); elements.viewerQualityMenu.hidden = !elements.viewerQualityMenu.hidden; elements.qualityButton.setAttribute("aria-expanded", elements.viewerQualityMenu.hidden ? "false" : "true"); });
+    elements.viewerQualityMenu.addEventListener("click", chooseViewerQuality);
+    elements.volumeButton.addEventListener("click", toggleViewerMute);
+    elements.volumeRange.addEventListener("input", updateViewerVolume);
+    elements.viewerTimecode.addEventListener("click", toggleViewerTimeDisplay);
     elements.viewerScrubber.addEventListener("input", seekViewerFromSlider);
     elements.viewerScrubber.addEventListener("change", function () { viewerState.isSeeking = false; });
     elements.screenshotButton.addEventListener("click", captureViewerFrame);
@@ -383,15 +406,16 @@
 
     document.addEventListener("click", function (event) {
       if (!elements.locationsPopover.contains(event.target) && event.target !== elements.locationsButton) { hidePopover(elements.locationsPopover, elements.locationsButton); }
+      if (!elements.sortPopover.contains(event.target) && event.target !== elements.sortButton) { hidePopover(elements.sortPopover, elements.sortButton); }
       if (!elements.filterPopover.contains(event.target) && event.target !== elements.filterButton) { hidePopover(elements.filterPopover, elements.filterButton); }
-      if (!elements.searchPopover.contains(event.target) && event.target !== elements.searchToggleButton) { setSearchOpen(false); }
+      if (!elements.viewerQualityMenu.contains(event.target) && event.target !== elements.qualityButton) { elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false"); }
       if (!elements.contextMenu.contains(event.target)) { closeContextMenu(); }
     });
     document.addEventListener("keydown", function (event) {
       var editing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target && event.target.tagName || "");
       if (event.key === "Alt") { altPressed = true; }
       if (!elements.viewer.hidden && !editing) {
-        if (event.key === " " || event.code === "Space") { event.preventDefault(); toggleViewerPlayback(); return; }
+        if (event.key === " " || event.code === "Space") { event.preventDefault(); event.stopImmediatePropagation(); closeViewer(); return; }
         if (event.key.toLowerCase() === "i") { markViewerIn(); return; }
         if (event.key.toLowerCase() === "o") { markViewerOut(); return; }
         if (event.key === "ArrowLeft") { event.preventDefault(); stepViewerFrame(-1); return; }
@@ -402,10 +426,20 @@
       else if (!elements.lutViewer.hidden) { closeLutViewer(); }
       else if (!elements.viewer.hidden) { closeViewer(); }
       else if (!elements.metadataPanel.hidden) { closeMetadata(); }
-      else { closeContextMenu(); setSearchOpen(false); hidePopover(elements.locationsPopover, elements.locationsButton); hidePopover(elements.filterPopover, elements.filterButton); }
+      else { closeContextMenu(); hidePopover(elements.locationsPopover, elements.locationsButton); hidePopover(elements.sortPopover, elements.sortButton); hidePopover(elements.filterPopover, elements.filterButton); }
+    });
+    document.addEventListener("keydown", function (event) {
+      var asset;
+      if ((event.key !== " " && event.code !== "Space") || !elements.viewer.hidden || !elements.lutViewer.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target && event.target.tagName || "")) { return; }
+      asset = selectedAsset();
+      if (asset) { event.preventDefault(); if (asset.type === "folder") { enterFolderScope(asset); } else { openViewer(asset); } }
     });
     document.addEventListener("keyup", function (event) { if (event.key === "Alt") { altPressed = false; } });
     window.addEventListener("blur", function () { altPressed = false; });
+    window.addEventListener("resize", function () {
+      if (resizeFrame) { cancelAnimationFrame(resizeFrame); }
+      resizeFrame = requestAnimationFrame(function () { resizeFrame = 0; syncGridZoom(); });
+    });
     window.addEventListener("beforeunload", function () { if (preferenceTimer) { clearTimeout(preferenceTimer); persistPreferences(); } });
   }
 
@@ -419,29 +453,24 @@
 
   function togglePopover(popover, trigger) {
     var show = popover.hidden;
+    var rect;
     hidePopover(elements.locationsPopover, elements.locationsButton);
+    hidePopover(elements.sortPopover, elements.sortButton);
     hidePopover(elements.filterPopover, elements.filterButton);
-    if (show) { setSearchOpen(false); }
     popover.hidden = !show;
     trigger.setAttribute("aria-expanded", show ? "true" : "false");
+    if (show && (popover === elements.sortPopover || popover === elements.filterPopover)) {
+      rect = trigger.getBoundingClientRect();
+      popover.style.maxHeight = Math.max(48, window.innerHeight - 16) + "px";
+      popover.style.top = Math.max(8, Math.min(window.innerHeight - popover.offsetHeight - 8, rect.bottom + 7)) + "px";
+      popover.style.left = Math.max(8, Math.min(window.innerWidth - popover.offsetWidth - 8, rect.left)) + "px";
+      popover.style.right = "auto";
+    }
   }
 
   function hidePopover(popover, trigger) {
     popover.hidden = true;
     trigger.setAttribute("aria-expanded", "false");
-  }
-
-  function setSearchOpen(open) {
-    var shouldOpen = !!open;
-    elements.searchPopover.hidden = !shouldOpen;
-    elements.searchToggleButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
-    state.preferences.searchOpen = shouldOpen;
-    persistPreferences();
-    if (shouldOpen) {
-      hidePopover(elements.locationsPopover, elements.locationsButton);
-      hidePopover(elements.filterPopover, elements.filterButton);
-      setTimeout(function () { elements.searchInput.focus(); elements.searchInput.select(); }, 0);
-    }
   }
 
   function chooseFolder() {
@@ -526,7 +555,6 @@
       row.className = "location-item";
       row.classList.toggle("is-active", root.id === state.preferences.activeRootId);
       toggle.type = "checkbox"; toggle.className = "location-toggle"; toggle.checked = root.enabled !== false;
-      toggle.disabled = state.preferences.scanMode !== "selected";
       toggle.setAttribute("data-root-toggle", root.id); toggle.setAttribute("aria-label", "选择 " + (root.label || root.path));
       select.type = "button"; select.className = "location-select"; select.setAttribute("data-root-select", root.id);
       dot.className = "status-dot " + (online ? "is-online" : "is-offline");
@@ -545,42 +573,47 @@
     elements.rootFilter.value = state.filters.rootId;
     var activeRoot = state.roots.filter(function (root) { return root.id === state.preferences.activeRootId; })[0] || state.roots[0];
     var scanningRoots = rootsForCurrentScan();
-    elements.rootLabel.textContent = state.preferences.scanMode === "single" && activeRoot ? activeRoot.path : scanningRoots.length + " 组素材位置";
+    elements.rootLabel.textContent = state.folderScope ? state.folderScope.path : scanningRoots.length === 1 ? scanningRoots[0].path : scanningRoots.length ? scanningRoots.length + " 组素材位置" : "未选择素材位置";
     elements.rootLabel.title = state.roots.map(function (root) { return root.path; }).join("\n");
     elements.mountStatus.className = "status-dot " + (onlineCount === state.roots.length ? "is-online" : onlineCount ? "is-partial" : "is-offline");
-    elements.scanModeSelect.value = state.preferences.scanMode;
-    elements.scanModeHint.textContent = state.preferences.scanMode === "single" ? "点击下方位置即可切换当前预览组。" : state.preferences.scanMode === "selected" ? "勾选需要同时预览的素材组。" : "当前会读取全部已添加位置。";
+    elements.toggleAllRootsButton.textContent = scanningRoots.length === state.roots.length && state.roots.length ? "取消全选" : "全选";
+    elements.upFolderButton.hidden = !state.folderScope;
+    elements.createFolderButton.disabled = !activeRoot || activeRoot.enabled === false;
   }
 
   function rootsForCurrentScan() {
-    var mode = state.preferences.scanMode;
-    var active;
-    if (mode === "all") { return state.roots.slice(); }
-    if (mode === "selected") { return state.roots.filter(function (root) { return root.enabled !== false; }); }
-    active = state.roots.filter(function (root) { return root.id === state.preferences.activeRootId; })[0] || state.roots[0];
-    return active ? [active] : [];
+    return state.roots.filter(function (root) { return root.enabled !== false; });
   }
 
   function activateRoot(rootId) {
-    if (!state.roots.some(function (root) { return root.id === rootId; })) { return; }
+    var root = state.roots.filter(function (item) { return item.id === rootId; })[0];
+    if (!root) { return; }
     state.preferences.activeRootId = rootId;
+    state.folderScope = null;
     persistPreferences();
     renderLocations();
-    if (state.preferences.scanMode === "single") { scanAssets(); }
   }
 
   function setRootEnabled(rootId, enabled) {
     var target = state.roots.filter(function (root) { return root.id === rootId; })[0];
     if (!target) { return; }
-    if (!enabled && state.roots.filter(function (root) { return root.enabled !== false; }).length <= 1) {
-      showNotice("自定义范围至少保留一组素材。", true, 3500);
-      renderLocations();
-      return;
-    }
     target.enabled = !!enabled;
+    if (enabled) { state.preferences.activeRootId = rootId; persistPreferences(); }
+    else if (state.preferences.activeRootId === rootId) {
+      var nextRoot = state.roots.filter(function (root) { return root.enabled !== false; })[0];
+      state.preferences.activeRootId = nextRoot ? nextRoot.id : ""; persistPreferences();
+    }
+    state.folderScope = null;
     persistRoots();
     renderLocations();
-    if (state.preferences.scanMode === "selected") { scanAssets(); }
+    scanAssets();
+  }
+
+  function toggleAllRoots() {
+    var enable = rootsForCurrentScan().length !== state.roots.length;
+    state.roots.forEach(function (root) { root.enabled = enable; });
+    state.preferences.activeRootId = enable && state.roots.length ? state.roots[0].id : ""; persistPreferences();
+    state.folderScope = null; persistRoots(); renderLocations(); scanAssets();
   }
 
   function scanRootWithWatchdog(root, progress, cancelSignal) {
@@ -594,7 +627,7 @@
       }
       armWatchdog();
       if (cancelSignal.cancelled) { clearTimeout(watchdog); resolve({ assets: [], warnings: [], truncated: false, offline: false, cancelled: true }); return; }
-      SeekLibrary.scanLibraryAsync(root.path, { fs: fs, path: path }, { maxFiles: MAX_SCAN_FILES, maxDepth: 10, batchSize: 40, cancelSignal: cancelSignal }, function (snapshot) {
+      SeekLibrary.scanLibraryAsync(root.path, { fs: fs, path: path }, { maxFiles: MAX_SCAN_FILES, maxDepth: 10, batchSize: 40, includeDirectories: true, cancelSignal: cancelSignal }, function (snapshot) {
         armWatchdog(); progress(snapshot);
       }).then(function (result) {
         clearTimeout(watchdog); resolve(result);
@@ -615,6 +648,7 @@
     var token;
     var chain;
     var scanSignal;
+    var cacheChanged = false;
     if (state.scanning) { state.pendingScan = true; if (state.activeScanSignal) { state.activeScanSignal.cancelled = true; } return; }
     if (!nodeAvailable) { loadPreviewAssets(); return; }
     roots = rootsForCurrentScan();
@@ -642,7 +676,13 @@
       }).then(function (result) {
         if (result.cancelled) { return; }
         root.online = !result.offline;
-        if (result.offline) { offline += 1; return; }
+        if (result.offline) {
+          offline += 1;
+          result.assets = (state.libraryCache[root.id] || []).map(function (asset) { var cached = Object.assign({}, asset); cached.offline = true; return cached; });
+        } else {
+          state.libraryCache[root.id] = result.assets.map(function (asset) { return { name: asset.name, path: asset.path, relativePath: asset.relativePath, folder: asset.folder, extension: asset.extension, type: asset.type, size: asset.size, modifiedMs: asset.modifiedMs }; });
+          cacheChanged = true;
+        }
         if (result.truncated) { truncated += 1; }
         warnings += result.warnings.length;
         result.assets.forEach(function (asset) {
@@ -661,6 +701,7 @@
     chain.then(function () {
       if (scanSignal.cancelled) { return; }
       state.assets = combined;
+      if (state.folderScope && !combined.some(function (asset) { return asset.type === "folder" && asset.rootId === state.folderScope.rootId && asset.path === state.folderScope.path; })) { state.folderScope = null; }
       rebuildAssetMap();
       renderLocations();
       elements.statusText.textContent = "已读取 " + combined.length + " 项素材";
@@ -668,6 +709,9 @@
       else if (truncated) { showNotice(truncated + " 组素材达到扫描上限，建议选择更小的文件夹。", false, 5500); }
       else if (warnings) { showNotice("有 " + warnings + " 个子位置暂时无法读取。", false, 5500); }
       applyFilters();
+      if (cacheChanged && stateStore) {
+        setTimeout(function () { persisted = stateStore.mutate(function (latest) { latest.libraryCache = state.libraryCache; }); state.libraryCache = persisted.libraryCache; }, 0);
+      }
     }).catch(function (error) {
       showNotice("读取素材失败：" + friendlyError(error), true, 0);
     }).then(function () {
@@ -686,8 +730,12 @@
       ["EVO4-Pro_产品特写.mov", "video", 238412800], ["fnOS_界面录屏.mp4", "video", 98304000],
       ["Seek_封面主视觉.png", "image", 6021120], ["发布会_环境声.wav", "audio", 48128000],
       ["NAS_工作流示意图.jpg", "image", 3184128], ["用户采访_A机位.mp4", "video", 438412800],
-      ["fnOS_Neutral_Film.cube", "lut", 94682]
+      ["fnOS_Neutral_Film.cube", "lut", 94682], ["品牌资产", "folder", 0]
     ];
+    if (window.location.search.indexOf("stress=1") !== -1) {
+      examples = [];
+      for (var stressIndex = 0; stressIndex < 620; stressIndex += 1) { examples.push(["压力测试素材_" + String(stressIndex + 1).padStart(4, "0") + ".mp4", "video", 1024 * 1024 * (1 + stressIndex % 90)]); }
+    }
     state.roots = [{ id: "preview", path: "/Volumes/团队文件-剪辑共享/预览", label: "团队素材预览", enabled: true }];
     state.preferences.activeRootId = "preview";
     state.assets = examples.map(function (example, index) {
@@ -730,6 +778,7 @@
   function resetAdvancedFilters() {
     elements.sizeFilter.value = "all"; elements.extensionFilter.value = ""; elements.labelFilter.value = "all"; elements.rootFilter.value = "all"; elements.metadataOnlyFilter.checked = false;
     readAdvancedFilters();
+    Array.prototype.forEach.call(elements.labelFilterChoices.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item.getAttribute("data-filter-label") === "all"); });
   }
 
   function syncFilterBadge() {
@@ -747,6 +796,7 @@
   function assetMatches(asset) {
     var local = localMetaFor(asset);
     var megabyte = 1024 * 1024;
+    if (state.folderScope && (asset.rootId !== state.folderScope.rootId || path.dirname(asset.path) !== state.folderScope.path)) { return false; }
     if (!SeekLibrary.matches(asset, state.query, state.filter)) { return false; }
     if (state.favoriteOnly && !local.favorite) { return false; }
     if (state.filters.size === "small" && asset.size >= 100 * megabyte) { return false; }
@@ -760,11 +810,41 @@
     return true;
   }
 
+  function enterFolderScope(folder) {
+    if (!folder || folder.type !== "folder") { return; }
+    state.folderScope = { rootId: folder.rootId, path: folder.path };
+    state.preferences.activeRootId = folder.rootId;
+    state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
+    persistPreferences(); renderLocations(); applyFilters();
+  }
+
+  function leaveFolderScope() {
+    var scope = state.folderScope;
+    var root;
+    var parent;
+    if (!scope) { return; }
+    root = state.roots.filter(function (item) { return item.id === scope.rootId; })[0];
+    parent = path.dirname(scope.path);
+    state.folderScope = root && parent !== root.path && parent.indexOf(root.path + path.sep) === 0 ? { rootId: scope.rootId, path: parent } : null;
+    state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
+    renderLocations(); applyFilters();
+  }
+
+  function currentDestination() {
+    var active = state.roots.filter(function (root) { return root.id === state.preferences.activeRootId && root.enabled !== false; })[0] || rootsForCurrentScan()[0];
+    return active ? { rootId: active.id, path: state.folderScope && state.folderScope.rootId === active.id ? state.folderScope.path : active.path } : null;
+  }
+
   function compareAssets(left, right) {
     var by = state.preferences.sortBy;
     var direction = state.preferences.sortDirection === "asc" ? 1 : -1;
     var leftValue;
     var rightValue;
+    var leftPinned = localMetaFor(left).pinned === true;
+    var rightPinned = localMetaFor(right).pinned === true;
+    if (leftPinned !== rightPinned) { return leftPinned ? -1 : 1; }
+    if (left.type === "folder" && right.type !== "folder") { return -1; }
+    if (right.type === "folder" && left.type !== "folder") { return 1; }
     if (by === "name") { return left.name.localeCompare(right.name, "zh-CN", { numeric: true }) * direction; }
     if (by === "type") { return ((left.type + left.extension).localeCompare(right.type + right.extension) || left.name.localeCompare(right.name, "zh-CN", { numeric: true })) * direction; }
     if (by === "size") { leftValue = left.size; rightValue = right.size; }
@@ -781,7 +861,7 @@
 
   function renderAssets() {
     var fragment = document.createDocumentFragment();
-    var renderList = state.visibleAssets.slice(0, MAX_RENDERED_ASSETS);
+    var renderList = state.visibleAssets;
     var selectedVisible = false;
     var visuals = [];
     renderGeneration += 1;
@@ -808,6 +888,9 @@
       var type = document.createElement("span");
       var favorite = document.createElement("button");
       var duration = document.createElement("span");
+      var pinned = document.createElement("span");
+      var proxy = document.createElement("span");
+      var offlineBadge = document.createElement("span");
       var copy = document.createElement("div");
       var name = document.createElement("span");
       var details = document.createElement("span");
@@ -816,42 +899,48 @@
       card.setAttribute("tabindex", "0");
       card.setAttribute("role", "button");
       card.setAttribute("aria-label", asset.name + "，双击预览，右键更多操作");
-      card.draggable = state.hostId === "PPRO" && asset.type !== "lut";
-      card.title = state.hostId === "PPRO" && asset.type !== "lut" ? "拖到 Premiere 素材箱、源监视器或时间线" : state.hostId === "AEFT" ? "AE 暂不支持从扩展直接拖入，请使用右键菜单" : "";
-      if (asset.domId === state.selectedId) { card.classList.add("is-selected"); selectedVisible = true; }
+      card.draggable = asset.type !== "folder";
+      card.classList.toggle("is-folder", asset.type === "folder");
+      card.title = asset.type === "folder" ? "双击打开；可把已选素材拖入此文件夹" : state.hostId === "PPRO" && asset.type !== "lut" ? "拖到 Premiere 素材箱、源监视器或时间线" : state.hostId === "AEFT" ? "AE 暂不支持从扩展直接拖入，请使用右键菜单" : "";
+      if (state.selectedIds[asset.domId]) { card.classList.add("is-selected"); card.setAttribute("aria-selected", "true"); selectedVisible = true; }
+      else { card.setAttribute("aria-selected", "false"); }
       thumb.className = "asset-thumb";
       sprite.className = "sprite-preview";
       progress.className = "scrub-progress";
       type.className = "asset-type"; type.textContent = asset.extension || asset.type;
+      type.hidden = asset.type === "folder";
       thumb.appendChild(createPlaceholder(asset)); thumb.appendChild(sprite); thumb.appendChild(progress); thumb.appendChild(type);
       favorite.type = "button"; favorite.className = "favorite-toggle" + (local.favorite ? " is-favorite" : "");
       favorite.textContent = local.favorite ? "★" : "☆"; favorite.title = local.favorite ? "取消本机收藏" : "添加到本机收藏";
-      favorite.setAttribute("aria-label", favorite.title); favorite.draggable = false; thumb.appendChild(favorite);
+      favorite.setAttribute("aria-label", favorite.title); favorite.draggable = false; favorite.hidden = asset.type === "folder"; thumb.appendChild(favorite);
       if (local.label && local.label !== "none") { var label = document.createElement("span"); label.className = "color-label"; label.setAttribute("data-label", local.label); thumb.appendChild(label); }
+      if (local.pinned) { pinned.className = "pin-badge"; pinned.title = "已置顶"; thumb.appendChild(pinned); }
+      if (/_Proxy_(?:1080|720|480|360)p(?:-\d+)?\.mp4$/i.test(asset.name)) { proxy.className = "proxy-badge"; proxy.textContent = "PROXY"; thumb.appendChild(proxy); }
+      if (asset.offline) { offlineBadge.className = "offline-badge"; offlineBadge.textContent = "OFFLINE"; thumb.appendChild(offlineBadge); card.classList.add("is-offline"); }
       duration.className = "duration-badge"; duration.hidden = true; thumb.appendChild(duration);
       copy.className = "asset-copy";
       name.className = "asset-name"; name.textContent = asset.name; name.title = asset.name;
-      details.className = "asset-details"; details.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
+      details.className = "asset-details"; details.textContent = asset.type === "folder" ? "文件夹" : typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
       copy.appendChild(name); copy.appendChild(details); card.appendChild(thumb); card.appendChild(copy); fragment.appendChild(card);
       visuals.push({ asset: asset, thumb: thumb, generation: renderGeneration });
     });
     elements.assetGrid.appendChild(fragment);
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
-    if (!selectedVisible && state.selectedId) { state.selectedId = null; }
+    if (!selectedVisible && state.selectedId && !state.selectedIds[state.selectedId]) { state.selectedId = null; }
     renderSelectionDock();
     if (!state.visibleAssets.length) {
       elements.assetGrid.hidden = true;
       showEmpty(state.assets.length ? "没有匹配的素材" : "没有可用素材", state.assets.length ? "调整搜索、收藏或筛选条件。" : "添加一个包含视频、图片、音频或 LUT 的素材位置。");
     } else {
       elements.assetGrid.hidden = false; elements.emptyState.hidden = true;
-      if (state.visibleAssets.length > MAX_RENDERED_ASSETS) { showNotice("结果较多，当前显示前 " + MAX_RENDERED_ASSETS + " 项。", false, 4000); }
     }
   }
 
   function createPlaceholder(asset) {
     var placeholder = document.createElement("div");
     placeholder.className = "generic-thumb";
-    placeholder.textContent = asset.type === "video" ? "VID" : asset.type === "image" ? "IMG" : asset.type === "lut" ? "LUT" : "AUD";
+    placeholder.textContent = asset.type === "video" ? "VID" : asset.type === "image" ? "IMG" : asset.type === "lut" ? "LUT" : asset.type === "folder" ? "" : "AUD";
+    if (asset.type === "folder") { placeholder.classList.add("folder-thumb"); }
     return placeholder;
   }
 
@@ -889,9 +978,11 @@
   function generateVisual(asset, thumb, generation) {
     var directImages = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "svg"];
     var visualPromise = Promise.resolve();
-    if (generation !== renderGeneration || !document.documentElement.contains(thumb)) { return visualPromise; }
+    if (generation !== renderGeneration || !document.documentElement.contains(thumb) || asset.offline) { return visualPromise; }
     if (asset.type === "image" && directImages.indexOf(asset.extension) !== -1) {
       installImage(thumb, SeekLibrary.fileUrl(asset.path), asset.name, "poster-image", asset);
+    } else if (mediaTools && asset.type === "image" && ["psd", "psb", "ai", "eps"].indexOf(asset.extension) !== -1) {
+      visualPromise = mediaTools.previewStillFor(asset.path).then(function (filePath) { if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, "poster-image", asset); } });
     } else if (mediaTools && asset.type === "video") {
       visualPromise = mediaTools.posterFor(asset.path).then(function (filePath) { if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, "poster-image", asset); } });
     } else if (mediaTools && asset.type === "audio") {
@@ -900,7 +991,7 @@
       visualPromise = renderLutThumbnail(asset, thumb, generation);
     }
     return visualPromise.catch(function () {}).then(function () {
-      if (!mediaTools || asset.type === "lut" || generation !== renderGeneration) { return; }
+      if (!mediaTools || asset.type === "lut" || asset.type === "folder" || generation !== renderGeneration) { return; }
       return mediaTools.metadataFor(asset.path).then(function (metadata) {
         asset.mediaMetadata = metadata;
         updateCardMediaBadge(asset, thumb);
@@ -935,11 +1026,16 @@
   function updateCardMediaBadge(asset, thumb) {
     var badge = thumb && thumb.querySelector(".duration-badge");
     var metadata = asset.mediaMetadata;
+    var card = thumb && thumb.closest(".asset-card");
+    var details = card && card.querySelector(".asset-details");
     if (!badge) { return; }
     if ((asset.type === "video" || asset.type === "audio") && metadata && metadata.duration !== null) {
       badge.textContent = formatShortDuration(metadata.duration); badge.hidden = false;
     } else if (asset.type === "image" && (metadata && metadata.resolution || asset.displayDimensions)) {
       badge.textContent = metadata && metadata.resolution || asset.displayDimensions; badge.hidden = false;
+    }
+    if (details && metadata) {
+      details.textContent = [typeLabel(asset.type), SeekLibrary.formatBytes(asset.size), metadata.duration !== null ? formatShortDuration(metadata.duration) : "", metadata.resolution && metadata.resolution !== "无视频画面" ? metadata.resolution : ""].filter(Boolean).join(" · ");
     }
   }
 
@@ -950,6 +1046,7 @@
     var sprite;
     if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) { return; }
     asset = assetForId(card.getAttribute("data-asset-id"));
+    if (asset && asset.type === "audio") { beginAudioHover(asset); return; }
     if (!asset || asset.type !== "video" || !mediaTools) { return; }
     thumb = card.querySelector(".asset-thumb");
     sprite = thumb.querySelector(".sprite-preview");
@@ -990,32 +1087,96 @@
     var card = closestCard(event.target);
     if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) { return; }
     card.querySelector(".asset-thumb").classList.remove("is-scrubbing");
+    stopAudioHover();
   }
 
-  function selectAsset(id) {
+  function beginAudioHover(asset) {
+    if (asset.offline) { return; }
+    stopAudioHover();
+    audioHover.assetId = asset.domId;
+    audioHover.timer = setTimeout(function () {
+      var media;
+      if (audioHover.assetId !== asset.domId) { return; }
+      media = new Audio(SeekLibrary.fileUrl(asset.path)); media.preload = "auto"; media.volume = .72;
+      audioHover.media = media;
+      safePlay(media);
+    }, 180);
+  }
+
+  function stopAudioHover() {
+    clearTimeout(audioHover.timer); audioHover.timer = null; audioHover.assetId = null;
+    if (audioHover.media) { try { audioHover.media.pause(); audioHover.media.removeAttribute("src"); audioHover.media.load(); } catch (error) {} audioHover.media = null; }
+  }
+
+  function selectedAssets() {
+    return state.assets.filter(function (asset) { return !!state.selectedIds[asset.domId]; });
+  }
+
+  function selectAsset(id, options) {
     var asset = assetForId(id);
+    var settings = options || {};
+    var anchorIndex;
+    var targetIndex;
+    var from;
+    var to;
+    var i;
     if (!asset) { return; }
+    if (settings.range && state.selectionAnchorId) {
+      anchorIndex = state.visibleAssets.map(function (item) { return item.domId; }).indexOf(state.selectionAnchorId);
+      targetIndex = state.visibleAssets.map(function (item) { return item.domId; }).indexOf(id);
+      if (anchorIndex !== -1 && targetIndex !== -1) {
+        if (!settings.toggle) { state.selectedIds = {}; }
+        from = Math.min(anchorIndex, targetIndex); to = Math.max(anchorIndex, targetIndex);
+        for (i = from; i <= to; i += 1) { state.selectedIds[state.visibleAssets[i].domId] = true; }
+      }
+    } else if (settings.toggle) {
+      if (state.selectedIds[id]) { delete state.selectedIds[id]; }
+      else { state.selectedIds[id] = true; }
+      state.selectionAnchorId = id;
+    } else {
+      state.selectedIds = {}; state.selectedIds[id] = true; state.selectionAnchorId = id;
+    }
     state.selectedId = id;
-    Array.prototype.forEach.call(elements.assetGrid.querySelectorAll(".asset-card"), function (card) { card.classList.toggle("is-selected", card.getAttribute("data-asset-id") === id); });
+    if (!state.selectedIds[id]) {
+      var remaining = selectedAssets();
+      state.selectedId = remaining.length ? remaining[remaining.length - 1].domId : null;
+    }
+    Array.prototype.forEach.call(elements.assetGrid.querySelectorAll(".asset-card"), function (card) {
+      var selected = !!state.selectedIds[card.getAttribute("data-asset-id")];
+      card.classList.toggle("is-selected", selected); card.setAttribute("aria-selected", selected ? "true" : "false");
+    });
     renderSelectionDock();
   }
 
   function renderSelectionDock() {
+    var assets = selectedAssets();
     var asset = selectedAsset();
     var local;
-    if (!asset || !findCard(asset.domId)) {
+    var totalSize;
+    if (!asset || !assets.length) {
       elements.selectionDock.hidden = true;
       return;
     }
     local = localMetaFor(asset);
     elements.selectionDock.hidden = false;
-    elements.selectionTitle.textContent = asset.name;
+    totalSize = assets.reduce(function (sum, item) { return sum + (Number(item.size) || 0); }, 0);
+    elements.selectionTitle.textContent = assets.length > 1 ? "已选择 " + assets.length + " 项" : asset.name;
     elements.selectionTitle.title = asset.name;
-    elements.selectionMeta.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size) + (local.label && local.label !== "none" ? " · " + local.label : "");
+    elements.selectionMeta.textContent = assets.length > 1 ? SeekLibrary.formatBytes(totalSize) + " · 可批量操作" : typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size) + (local.label && local.label !== "none" ? " · " + local.label : "");
     elements.selectionPreviewButton.textContent = asset.type === "lut" ? "预览 LUT" : "预览";
-    elements.selectionImportButton.hidden = state.hostId === "BROWSER" || asset.type === "lut";
-    elements.selectionPlaceButton.hidden = state.hostId === "BROWSER" || asset.type === "lut";
+    elements.selectionPreviewButton.hidden = assets.length !== 1 || asset.type === "folder";
+    elements.selectionImportButton.hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
+    elements.selectionPlaceButton.hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
     elements.selectionPlaceButton.textContent = state.hostId === "AEFT" ? "加入合成" : "放到播放头";
+  }
+
+  function toggleSelectAllAssets() {
+    var allSelected = state.visibleAssets.length && state.visibleAssets.every(function (asset) { return !!state.selectedIds[asset.domId]; });
+    state.selectedIds = {};
+    if (!allSelected) { state.visibleAssets.forEach(function (asset) { state.selectedIds[asset.domId] = true; }); }
+    state.selectedId = !allSelected && state.visibleAssets.length ? state.visibleAssets[state.visibleAssets.length - 1].domId : null;
+    state.selectionAnchorId = state.selectedId;
+    renderAssets();
   }
 
   function findCard(id) {
@@ -1025,23 +1186,85 @@
     return null;
   }
 
-  function typeLabel(type) { return type === "video" ? "视频" : type === "image" ? "图片" : type === "lut" ? "LUT" : "音频"; }
+  function typeLabel(type) { return type === "video" ? "视频" : type === "image" ? "图片" : type === "lut" ? "LUT" : type === "folder" ? "文件夹" : "音频"; }
 
   function startAssetDrag(event) {
     var card = closestCard(event.target);
     var asset = card && assetForId(card.getAttribute("data-asset-id"));
+    var assets;
+    var paths;
+    var adobePaths;
+    stopAudioHover();
     if (event.target.closest && event.target.closest("button")) { event.preventDefault(); return; }
-    if (state.hostId !== "PPRO" || !asset || asset.type === "lut" || !nodeAvailable) { event.preventDefault(); return; }
-    populateAdobeDragData(event, asset.path);
+    if (!asset || asset.type === "folder" || asset.offline || !nodeAvailable) { event.preventDefault(); if (asset && asset.offline) { showNotice("素材位置离线，重新连接 SMB 后再拖动。", true, 4000); } return; }
+    if (!state.selectedIds[asset.domId]) { selectAsset(asset.domId, { only: true }); }
+    assets = selectedAssets().filter(function (item) { return item.type !== "folder"; });
+    paths = assets.map(function (item) { return item.path; });
+    adobePaths = assets.filter(function (item) { return item.type !== "lut"; }).map(function (item) { return item.path; });
+    if (!paths.length) { event.preventDefault(); return; }
+    event.dataTransfer.effectAllowed = "copyMove";
+    event.dataTransfer.setData("application/x-lk-file-bridge-assets", JSON.stringify(assets.map(function (item) { return item.domId; })));
+    if (state.hostId === "PPRO" && adobePaths.length) { populateAdobeDragData(event, adobePaths); }
+    else { event.dataTransfer.setData("text/plain", paths.join("\n")); }
     card.classList.add("is-dragging");
-    elements.statusText.textContent = "拖到 Premiere 素材箱、源监视器或时间线";
+    elements.statusText.textContent = state.hostId === "PPRO" ? "拖到 Premiere 或插件文件夹" : "拖到插件中的文件夹";
   }
 
-  function populateAdobeDragData(event, filePath) {
-    event.dataTransfer.effectAllowed = "copy";
-    event.dataTransfer.setData("com.adobe.cep.dnd.file.0", filePath);
-    event.dataTransfer.setData("text/plain", filePath);
-    event.dataTransfer.setData("text/uri-list", SeekLibrary.fileUrl(filePath));
+  function populateAdobeDragData(event, input) {
+    var paths = Array.isArray(input) ? input : [input];
+    FnOSInteractionTools.writeAdobeDragData(event.dataTransfer, paths, SeekLibrary.fileUrl);
+  }
+
+  function handleLibraryDragOver(event) {
+    var card = closestCard(event.target);
+    var folder = card && assetForId(card.getAttribute("data-asset-id"));
+    var internal = event.dataTransfer && Array.prototype.indexOf.call(event.dataTransfer.types || [], "application/x-lk-file-bridge-assets") !== -1;
+    var external = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length;
+    if ((internal && folder && folder.type === "folder") || (!internal && external)) {
+      event.preventDefault(); event.dataTransfer.dropEffect = internal ? "move" : "copy";
+      if (folder && folder.type === "folder") { card.classList.add("is-drop-target"); }
+    }
+  }
+
+  function sourcePathsFromDrop(dataTransfer) {
+    var paths = [];
+    var uriText;
+    var i;
+    for (i = 0; dataTransfer.files && i < dataTransfer.files.length; i += 1) {
+      if (dataTransfer.files[i].path) { paths.push(dataTransfer.files[i].path); }
+    }
+    if (!paths.length) {
+      uriText = dataTransfer.getData("text/uri-list") || "";
+      uriText.split(/\r?\n/).filter(function (line) { return line && line.charAt(0) !== "#"; }).forEach(function (url) {
+        if (url.indexOf("file://") === 0) { try { paths.push(decodeURIComponent(url.replace(/^file:\/\//, ""))); } catch (error) {} }
+      });
+    }
+    return paths;
+  }
+
+  function handleLibraryDrop(event) {
+    var card = closestCard(event.target);
+    var folder = card && assetForId(card.getAttribute("data-asset-id"));
+    var rawIds = event.dataTransfer.getData("application/x-lk-file-bridge-assets");
+    var destination;
+    var ids;
+    var assets;
+    var paths;
+    event.preventDefault();
+    Array.prototype.forEach.call(elements.assetGrid.querySelectorAll(".is-drop-target"), function (item) { item.classList.remove("is-drop-target"); });
+    if (rawIds && folder && folder.type === "folder") {
+      try { ids = JSON.parse(rawIds); } catch (error) { ids = []; }
+      assets = ids.map(assetForId).filter(function (asset) { return asset && asset.type !== "folder"; });
+      if (assets.length) { moveAssetsToFolder(assets, { getAttribute: function (name) { return name === "data-root-id" ? folder.rootId : folder.path; } }); }
+      return;
+    }
+    paths = sourcePathsFromDrop(event.dataTransfer);
+    destination = folder && folder.type === "folder" ? { rootId: folder.rootId, path: folder.path } : currentDestination();
+    if (!paths.length || !destination || !assetOps) { showNotice("请先勾选目标素材位置，再拖入本地素材。", true, 4500); return; }
+    showNotice("正在复制 " + paths.length + " 项到当前素材路径…", false, 0);
+    assetOps.copyExternalFiles({ roots: state.roots, rootId: destination.rootId, destinationPath: destination.path, sourcePaths: paths, onProgress: showOperationProgress }).then(function () {
+      showNotice("外部素材已复制到当前路径。", false, 3800); scanAssets();
+    }).catch(function (error) { showNotice("复制失败：" + friendlyError(error), true, 6500); });
   }
 
   function openContextMenu(event) {
@@ -1050,23 +1273,42 @@
     var left;
     var top;
     var favoriteButton;
+    var assets;
+    var single;
     if (!card) { return; }
     event.preventDefault(); event.stopPropagation();
-    state.contextId = card.getAttribute("data-asset-id"); selectAsset(state.contextId); asset = assetForId(state.contextId);
+    state.contextId = card.getAttribute("data-asset-id");
+    if (!state.selectedIds[state.contextId]) { selectAsset(state.contextId, { only: true }); }
+    asset = assetForId(state.contextId); assets = selectedAssets(); single = assets.length === 1;
     favoriteButton = elements.contextMenu.querySelector('[data-command="favorite"]');
-    favoriteButton.textContent = localMetaFor(asset).favorite ? "取消本机收藏" : "添加到本机收藏";
-    elements.contextMenu.querySelector(".transcode-menu").hidden = asset.type !== "video";
-    elements.contextMenu.querySelector('[data-command="import"]').hidden = asset.type === "lut" || state.hostId === "BROWSER";
-    elements.contextPlaceButton.hidden = asset.type === "lut" || state.hostId === "BROWSER";
-    renderLabelChoices(asset);
+    favoriteButton.textContent = assets.every(function (item) { return localMetaFor(item).favorite; }) ? "取消本机收藏" : "添加到本机收藏";
+    elements.contextMenu.querySelector('[data-command="pin"]').textContent = assets.every(function (item) { return localMetaFor(item).pinned; }) ? "取消置顶" : "置顶";
+    elements.contextMenu.querySelector(".transcode-menu").hidden = !assets.length || assets.some(function (item) { return item.type !== "video"; });
+    elements.contextMenu.querySelector('[data-command="play"]').disabled = !single;
+    elements.contextMenu.querySelector('[data-command="info"]').disabled = !single || asset.type === "folder";
+    elements.contextMenu.querySelector('[data-command="import"]').hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
+    elements.insertSubmenuRow.hidden = state.hostId !== "PPRO" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
+    elements.contextAePlaceButton.hidden = state.hostId !== "AEFT" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
+    elements.contextMenu.querySelector('[data-command="reveal"]').disabled = !single;
+    elements.contextMenu.querySelector('[data-command="rename"]').disabled = !single;
+    elements.contextMenu.querySelector('[data-command="duplicate"]').disabled = assets.some(function (item) { return item.type === "folder"; });
+    elements.copyLabelButton.disabled = !single || !localMetaFor(asset).label || localMetaFor(asset).label === "none";
+    elements.pasteLabelButton.disabled = !state.copiedLabel;
+    renderLabelChoices(assets);
+    renderFolderSubmenu(assets);
     elements.contextMenu.hidden = false;
     left = Math.min(event.clientX, window.innerWidth - elements.contextMenu.offsetWidth - 6);
     top = Math.min(event.clientY, window.innerHeight - elements.contextMenu.offsetHeight - 6);
-    elements.contextMenu.style.left = Math.max(4, left) + "px"; elements.contextMenu.style.top = Math.max(4, top) + "px";
+    left = Math.max(4, left);
+    top = Math.max(4, top);
+    elements.contextMenu.style.left = left + "px";
+    elements.contextMenu.style.top = top + "px";
+    elements.contextMenu.style.maxHeight = Math.max(120, window.innerHeight - top - 6) + "px";
   }
 
-  function renderLabelChoices(asset) {
-    var current = localMetaFor(asset).label || "none";
+  function renderLabelChoices(assets) {
+    var labels = assets.map(function (asset) { return localMetaFor(asset).label || "none"; });
+    var current = labels.every(function (label) { return label === labels[0]; }) ? labels[0] : "mixed";
     elements.contextLabelChoices.innerHTML = "";
     LABELS.forEach(function (label) {
       var button = document.createElement("button");
@@ -1081,17 +1323,23 @@
     var button = event.target.closest("button[data-command]");
     var asset = assetForId(state.contextId);
     var command;
+    var assets = selectedAssets();
     if (!button || !asset) { return; }
     command = button.getAttribute("data-command");
-    if (command === "play") { openViewer(asset); }
+    if (command === "play") { if (asset.type === "folder") { enterFolderScope(asset); } else { openViewer(asset); } }
     else if (command === "info") { showMetadataHover(asset, button); return; }
-    else if (command === "import") { runHostActionForAsset(asset, false).catch(function () {}); }
-    else if (command === "place") { runHostActionForAsset(asset, true).catch(function () {}); }
-    else if (command === "favorite") { toggleFavorite(asset); }
-    else if (command === "transcode") { transcodeAsset(asset, button.getAttribute("data-profile")); }
+    else if (command === "import") { runHostActionForAssets(assets, false, "current").catch(function () {}); }
+    else if (command === "insert") { runHostActionForAssets(assets, true, button.getAttribute("data-position") || "current").catch(function () {}); }
+    else if (command === "favorite") { setFavoriteForAssets(assets); }
+    else if (command === "pin") { setPinnedForAssets(assets); }
+    else if (command === "transcode") { transcodeAssets(assets, button.getAttribute("data-profile")); }
+    else if (command === "duplicate") { duplicateAssets(assets); }
+    else if (command === "move-folder") { moveAssetsToFolder(assets, button); }
+    else if (command === "copy-label") { state.copiedLabel = localMetaFor(asset).label; showNotice("标签已复制。", false, 2200); }
+    else if (command === "paste-label") { assets.forEach(function (item) { setColorLabel(item, state.copiedLabel, true); }); renderAssets(); }
     else if (command === "reveal") { revealAsset(asset); }
     else if (command === "rename") { openRenameDialog(asset); }
-    else if (command === "trash") { openTrashDialog(asset); }
+    else if (command === "trash") { openTrashDialog(assets); }
     closeContextMenu();
   }
 
@@ -1102,10 +1350,68 @@
     else { updateCardLocalMeta(asset); }
   }
 
-  function setColorLabel(asset, label) {
+  function setColorLabel(asset, label, silent) {
     updateLocalMeta(asset, { label: LABELS.indexOf(label) !== -1 ? label : "none" });
-    if (state.filters.label !== "all") { applyFilters(); }
-    else { updateCardLocalMeta(asset); }
+    if (!silent) {
+      if (state.filters.label !== "all") { applyFilters(); }
+      else { updateCardLocalMeta(asset); renderSelectionDock(); }
+    }
+  }
+
+  function setFavoriteForAssets(assets) {
+    var favorite = !assets.every(function (asset) { return localMetaFor(asset).favorite; });
+    assets.forEach(function (asset) { updateLocalMeta(asset, { favorite: favorite }); });
+    if (state.favoriteOnly) { applyFilters(); } else { renderAssets(); }
+  }
+
+  function setPinnedForAssets(assets) {
+    var pinned = !assets.every(function (asset) { return localMetaFor(asset).pinned; });
+    assets.forEach(function (asset) { updateLocalMeta(asset, { pinned: pinned }); });
+    applyFilters();
+  }
+
+  function renderFolderSubmenu(assets) {
+    var folders = state.assets.filter(function (asset) {
+      return asset.type === "folder" && !assets.some(function (selected) { return selected.path === asset.path; });
+    });
+    var trigger = elements.folderSubmenuRow.children[0];
+    elements.folderSubmenu.innerHTML = "";
+    trigger.disabled = !folders.length || assets.some(function (asset) { return asset.type === "folder"; });
+    folders.forEach(function (folder) {
+      var button = document.createElement("button");
+      button.type = "button"; button.setAttribute("data-command", "move-folder"); button.setAttribute("data-root-id", folder.rootId); button.setAttribute("data-folder-path", folder.path);
+      button.textContent = folder.rootLabel + " / " + folder.relativePath;
+      elements.folderSubmenu.appendChild(button);
+    });
+    if (!folders.length) {
+      var empty = document.createElement("span"); empty.className = "submenu-empty"; empty.textContent = "没有可用文件夹"; elements.folderSubmenu.appendChild(empty);
+    }
+  }
+
+  function duplicateAssets(assets) {
+    var files = assets.filter(function (asset) { return asset.type !== "folder"; });
+    if (!assetOps || !files.length) { return; }
+    showNotice("正在创建 " + files.length + " 个副本…", false, 0);
+    assetOps.createCopies({ roots: state.roots, assets: files, onProgress: showOperationProgress }).then(function () {
+      showNotice("副本已创建。", false, 3500); scanAssets();
+    }).catch(function (error) { showNotice("创建副本失败：" + friendlyError(error), true, 6500); });
+  }
+
+  function moveAssetsToFolder(assets, button) {
+    var files = assets.filter(function (asset) { return asset.type !== "folder"; });
+    if (!assetOps || !files.length) { return; }
+    showNotice("正在移动 " + files.length + " 项素材…", false, 0);
+    assetOps.moveAssetsToFolder({ roots: state.roots, destinationRootId: button.getAttribute("data-root-id"), destinationPath: button.getAttribute("data-folder-path"), assets: files, onProgress: showOperationProgress }).then(function (results) {
+      results.forEach(function (result) { if (result.changed) { migrateLocalMeta(result.sourcePath, result.path); } });
+      state.selectedIds = {}; state.selectedId = null; showNotice("素材已添加到文件夹。", false, 3500); scanAssets();
+    }).catch(function (error) { showNotice("移动失败：" + friendlyError(error), true, 6500); });
+  }
+
+  function showOperationProgress(event) {
+    var ratio;
+    if (!event || !event.total) { return; }
+    ratio = Math.round(event.completed / event.total * 100);
+    elements.statusText.textContent = "正在处理 " + event.completed + "/" + event.total + "（" + ratio + "%）";
   }
 
   function updateCardLocalMeta(asset) {
@@ -1165,18 +1471,41 @@
 
   function transcodeAsset(asset, profile) {
     var temporaryPath;
-    if (!mediaTools || !asset || asset.type !== "video") { showNotice("只有视频素材支持分辨率转码。", true, 4000); return; }
-    temporaryPath = path.join(path.dirname(asset.path), "." + path.basename(asset.path, path.extname(asset.path)).slice(0, 120) + "-" + process.pid + "-" + Date.now() + ".rove-part.mp4");
-    showNotice("正在使用系统硬件编码器转码 " + profile + "p…", false, 0);
-    mediaTools.transcodeTo(asset.path, temporaryPath, profile).then(function () {
+    if (!mediaTools || !asset || asset.type !== "video") { return Promise.reject(new Error("只有视频素材支持分辨率转码。")); }
+    temporaryPath = path.join(path.dirname(asset.path), "." + path.basename(asset.path, path.extname(asset.path)).slice(0, 120) + "-" + process.pid + "-" + Date.now() + ".lkfb-part.mp4");
+    return mediaTools.transcodeTo(asset.path, temporaryPath, profile, function (progress) { showTranscodeProgress(asset.name, progress.ratio); }).then(function () {
       return mediaTools.claimTranscodeOutput(temporaryPath, asset.path, profile);
-    }).then(function (destination) {
-      showNotice("转码完成：" + path.basename(destination), false, 6000);
-      scanAssets();
     }).catch(function (error) {
       mediaTools.cleanupTranscodeTemporary(temporaryPath, asset.path);
+      throw error;
+    });
+  }
+
+  function transcodeAssets(assets, profile) {
+    var videos = assets.filter(function (asset) { return asset.type === "video"; });
+    var results = [];
+    if (!videos.length) { showNotice("只有视频素材支持分辨率转码。", true, 4000); return; }
+    elements.operationProgress.hidden = false;
+    videos.reduce(function (promise, asset, index) {
+      return promise.then(function () {
+        elements.operationProgressLabel.textContent = "转码 " + (index + 1) + "/" + videos.length + " · " + asset.name;
+        return transcodeAsset(asset, profile).then(function (destination) { results.push(destination); });
+      });
+    }, Promise.resolve()).then(function () {
+      showTranscodeProgress("转码完成", 1);
+      setTimeout(function () { elements.operationProgress.hidden = true; }, 1600);
+      showNotice("已完成 " + results.length + " 项转码。", false, 5000); scanAssets();
+    }).catch(function (error) {
+      elements.operationProgress.hidden = true;
       showNotice("转码失败，源文件未改变：" + friendlyError(error), true, 7000);
     });
+  }
+
+  function showTranscodeProgress(label, ratio) {
+    var percent = Math.max(0, Math.min(100, Math.round((Number(ratio) || 0) * 100)));
+    elements.operationProgress.hidden = false;
+    elements.operationProgressLabel.textContent = label + " · " + percent + "%";
+    elements.operationProgressBar.style.transform = "scaleX(" + (percent / 100) + ")";
   }
 
   function openViewer(asset) {
@@ -1184,7 +1513,9 @@
     var audioViewer;
     var waveform;
     var token;
+    stopAudioHover();
     if (!asset) { return; }
+    if (asset.offline) { showNotice("素材当前离线；重新连接原 SMB 路径后可恢复预览。", true, 5000); return; }
     if (asset.type === "lut") { openLutViewer(asset); return; }
     closeViewer();
     if (mediaTools) { mediaTools.prioritizeViewer(); }
@@ -1193,34 +1524,38 @@
     viewerState.metadata = asset.mediaMetadata || null;
     viewerState.inPoint = 0;
     viewerState.outPoint = null;
+    viewerState.hasIn = false; viewerState.hasOut = false;
     viewerState.loop = false;
-    viewerState.profile = "source";
+    viewerState.profile = "auto";
     viewerState.audioProxyPath = "";
     viewerState.audioProxyStatus = "idle";
+    viewerState.timeDisplayMode = "timecode"; viewerState.sourcePlayable = false; viewerState.autoProxyReady = ""; viewerState.autoKeepSource = false;
     token = ++viewerState.loadToken;
     elements.viewerTitle.textContent = asset.name;
     elements.viewerSubtitle.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
-    elements.viewerStage.innerHTML = "";
+    elements.viewerMediaLayer.innerHTML = "";
     elements.viewer.hidden = false;
     elements.viewerBusy.hidden = true;
-    elements.viewerControls.hidden = asset.type === "image";
+    elements.viewerTimeline.hidden = asset.type === "image";
     elements.screenshotButton.hidden = state.hostId !== "PPRO" || asset.type !== "video";
-    elements.proxySelect.disabled = asset.type !== "video";
-    elements.proxySelect.value = "source";
+    elements.qualityButton.hidden = asset.type !== "video";
+    elements.qualityButton.textContent = "AUTO";
+    Array.prototype.forEach.call(elements.viewerQualityMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item.getAttribute("data-quality") === "auto"); });
     elements.loopButton.classList.remove("is-active");
     elements.loopButton.setAttribute("aria-pressed", "false");
     elements.viewerScrubber.value = "0";
+    setViewerPlayState(false);
     elements.viewerTimecode.textContent = "00:00:00:00";
-    elements.viewerFooter.textContent = state.hostId !== "PPRO" ? "Esc 返回 · 预览不会写入 Adobe 工程" : asset.type === "video" ? "Esc 返回 · 画面可拖到 Premiere；按住 Alt 拖动仅发送音频副本" : asset.type === "audio" ? "Esc 返回 · 音频可拖到 Premiere" : "Esc 返回 · 图片可拖到 Premiere";
     updateViewerMarks();
     if (asset.type === "video") {
       media = document.createElement("video");
-      media.controls = true; media.preload = "metadata"; media.playsInline = true; media.draggable = state.hostId === "PPRO";
+      media.controls = false; media.preload = "auto"; media.playsInline = true; media.draggable = state.hostId === "PPRO";
       media.setAttribute("draggable", state.hostId === "PPRO" ? "true" : "false");
-      elements.viewerStage.appendChild(media);
+      media.addEventListener("click", toggleViewerPlayback);
+      elements.viewerMediaLayer.appendChild(media);
       viewerState.media = media;
       bindViewerMedia(media);
-      loadViewerProfile("source", false);
+      loadViewerProfile("auto", false);
       if (mediaTools && state.hostId === "PPRO") {
         viewerState.audioProxyStatus = "preparing";
         mediaTools.audioProxyFor(asset.path).then(function (audioPath) {
@@ -1230,14 +1565,18 @@
     } else if (asset.type === "audio") {
       audioViewer = document.createElement("div"); audioViewer.className = "audio-viewer";
       waveform = document.createElement("div"); waveform.className = "generic-thumb"; waveform.textContent = "正在生成波形…"; audioViewer.appendChild(waveform);
-      media = document.createElement("audio"); media.src = SeekLibrary.fileUrl(asset.path); media.controls = true; media.preload = "metadata"; media.draggable = state.hostId === "PPRO"; audioViewer.appendChild(media); elements.viewerStage.appendChild(audioViewer);
+      media = document.createElement("audio"); media.src = SeekLibrary.fileUrl(asset.path); media.controls = false; media.preload = "auto"; media.draggable = state.hostId === "PPRO"; audioViewer.appendChild(media); elements.viewerMediaLayer.appendChild(audioViewer);
       viewerState.media = media; bindViewerMedia(media);
       safePlay(media);
       if (mediaTools) { mediaTools.waveformFor(asset.path).then(function (filePath) { var image; if (viewerState.asset !== asset || !document.documentElement.contains(waveform)) { return; } image = document.createElement("img"); image.src = SeekLibrary.fileUrl(filePath); image.alt = asset.name + " 波形"; image.draggable = false; waveform.replaceWith(image); }).catch(function () { if (document.documentElement.contains(waveform)) { waveform.textContent = "无法生成波形"; } }); }
     } else {
       media = document.createElement("img"); media.alt = asset.name; media.draggable = state.hostId === "PPRO"; media.setAttribute("draggable", state.hostId === "PPRO" ? "true" : "false");
       media.addEventListener("load", function () { if (viewerState.asset === asset) { elements.viewerSubtitle.textContent = media.naturalWidth + " × " + media.naturalHeight + " · " + String(asset.extension || "图片").toUpperCase() + " · " + SeekLibrary.formatBytes(asset.size); } });
-      media.src = SeekLibrary.fileUrl(asset.path); elements.viewerStage.appendChild(media);
+      elements.viewerMediaLayer.appendChild(media);
+      if (mediaTools && ["psd", "psb", "ai", "eps"].indexOf(asset.extension) !== -1) {
+        elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "正在生成设计文件预览…";
+        mediaTools.previewStillFor(asset.path).then(function (previewPath) { if (viewerState.asset === asset) { media.src = SeekLibrary.fileUrl(previewPath); elements.viewerBusy.hidden = true; } }).catch(function (error) { elements.viewerBusy.hidden = true; showNotice("无法预览该设计文件：" + friendlyError(error), true, 5500); });
+      } else { media.src = SeekLibrary.fileUrl(asset.path); }
       viewerState.media = media;
     }
     if (mediaTools && asset.type !== "image") {
@@ -1252,10 +1591,12 @@
   function closeViewer() {
     var closingAsset = viewerState.asset;
     viewerState.loadToken += 1;
+    clearTimeout(viewerState.autoTimer); viewerState.autoTimer = null;
     if (closingAsset && mediaTools) { mediaTools.cancelViewerJobs(closingAsset.path); }
     if (viewerState.frameRequest) { cancelAnimationFrame(viewerState.frameRequest); viewerState.frameRequest = 0; }
-    Array.prototype.forEach.call(elements.viewerStage.querySelectorAll("video,audio"), function (media) { media.pause(); media.removeAttribute("src"); media.load(); });
-    elements.viewerStage.innerHTML = ""; elements.viewer.hidden = true; elements.viewerBusy.hidden = true;
+    Array.prototype.forEach.call(elements.viewerMediaLayer.querySelectorAll("video,audio"), function (media) { media.pause(); media.removeAttribute("src"); media.load(); });
+    elements.viewerMediaLayer.innerHTML = ""; elements.viewer.hidden = true; elements.viewerBusy.hidden = true;
+    elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false");
     viewerState.asset = null; viewerState.media = null; viewerState.metadata = null; viewerState.audioProxyPath = ""; viewerState.audioProxyStatus = "idle";
   }
 
@@ -1265,21 +1606,28 @@
       if (viewerState.outPoint === null || viewerState.outPoint > media.duration) { viewerState.outPoint = isFinite(media.duration) ? media.duration : null; }
       updateViewerMarks(); updateViewerTimeline();
     });
-    media.addEventListener("play", function () { elements.playPauseButton.textContent = "暂停"; startViewerClock(); });
-    media.addEventListener("pause", function () { elements.playPauseButton.textContent = "播放"; updateViewerTimeline(); });
+    media.addEventListener("canplay", function () { if (media === viewerState.media && (media.tagName !== "VIDEO" || media.videoWidth > 0)) { viewerState.sourcePlayable = true; } });
+    media.addEventListener("play", function () { setViewerPlayState(true); startViewerClock(); });
+    media.addEventListener("pause", function () { setViewerPlayState(false); updateViewerTimeline(); });
     media.addEventListener("timeupdate", updateViewerTimeline);
     media.addEventListener("ended", function () {
       if (viewerState.loop && viewerState.media === media) { media.currentTime = viewerState.inPoint; safePlay(media); }
-      else { elements.playPauseButton.textContent = "播放"; }
+      else { setViewerPlayState(false); }
     });
     media.addEventListener("error", function () {
-      if (viewerState.asset && viewerState.asset.type === "video" && viewerState.profile === "source" && media.getAttribute("data-fallback") !== "true") {
-        media.setAttribute("data-fallback", "true");
-        showNotice("原格式无法直接播放，正在生成 1080p 兼容代理…", false, 4000);
-        elements.proxySelect.value = "1080";
-        loadViewerProfile("1080", true);
+      viewerState.sourcePlayable = false;
+      if (viewerState.asset && viewerState.asset.type === "video" && viewerState.autoProxyReady) {
+        switchViewerSource(viewerState.autoProxyReady, Number(media.currentTime) || 0, true);
+      } else if (viewerState.asset && viewerState.asset.type === "video" && viewerState.profile !== "auto" && media.getAttribute("data-fallback") !== "true") {
+        media.setAttribute("data-fallback", "true"); showNotice("当前格式无法直接播放，正在准备自动代理…", false, 4000); loadViewerProfile("auto", true);
       }
     });
+  }
+
+  function setViewerPlayState(playing) {
+    elements.playPauseButton.innerHTML = playing ? '<span class="icon-pause" aria-hidden="true"></span>' : '<span class="icon-play" aria-hidden="true"></span>';
+    elements.playPauseButton.title = playing ? "暂停" : "播放";
+    elements.playPauseButton.setAttribute("aria-label", playing ? "暂停" : "播放");
   }
 
   function safePlay(media) {
@@ -1288,40 +1636,91 @@
     try { result = media.play(); if (result && typeof result.catch === "function") { result.catch(function () {}); } } catch (error) {}
   }
 
+  function chooseViewerQuality(event) {
+    var button = event.target.closest("button[data-quality]");
+    if (!button) { return; }
+    Array.prototype.forEach.call(elements.viewerQualityMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item === button); });
+    elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false");
+    loadViewerProfile(button.getAttribute("data-quality"), true);
+  }
+
+  function toggleViewerMute() {
+    var media = viewerState.media;
+    if (!media || typeof media.muted !== "boolean") { return; }
+    media.muted = !media.muted;
+    elements.volumeButton.classList.toggle("is-muted", media.muted);
+    elements.volumeRange.value = media.muted ? "0" : String(media.volume || 1);
+  }
+
+  function updateViewerVolume() {
+    var media = viewerState.media;
+    var value = Math.max(0, Math.min(1, Number(elements.volumeRange.value) || 0));
+    if (!media || typeof media.volume !== "number") { return; }
+    media.volume = value; media.muted = value === 0; elements.volumeButton.classList.toggle("is-muted", media.muted);
+  }
+
+  function toggleViewerTimeDisplay() {
+    viewerState.timeDisplayMode = viewerState.timeDisplayMode === "frames" ? "timecode" : "frames";
+    updateViewerTimeline();
+  }
+
   function loadViewerProfile(profile, preserveTime) {
     var asset = viewerState.asset;
     var media = viewerState.media;
     var currentTime = preserveTime && media ? Number(media.currentTime) || 0 : 0;
     var wasPlaying = media && !media.paused;
     var token;
-    var promise;
+    var targetProfile;
     if (!asset || asset.type !== "video" || !media) { return; }
     viewerState.profile = profile;
+    elements.qualityButton.textContent = profile === "source" ? "SRC" : profile === "auto" ? "AUTO" : String(profile).toUpperCase();
     token = ++viewerState.loadToken;
-    elements.viewerBusy.hidden = false;
-    elements.viewerBusy.textContent = profile === "source" ? "正在准备原画预览…" : "正在生成 " + profile + "p 播放代理…";
-    elements.proxySelect.disabled = true;
-    promise = mediaTools ? mediaTools.previewProxyFor(asset.path, profile) : Promise.resolve(asset.path);
-    promise.then(function (previewPath) {
-      function restore() {
-        if (token !== viewerState.loadToken || media !== viewerState.media) { return; }
-        if (isFinite(media.duration)) { media.currentTime = Math.min(currentTime, media.duration); }
-        elements.viewerBusy.hidden = true; elements.proxySelect.disabled = false;
-        if (wasPlaying || currentTime === 0) { safePlay(media); }
-        updateViewerTimeline();
-      }
+    clearTimeout(viewerState.autoTimer); viewerState.autoTimer = null;
+    if (profile === "source") {
+      elements.viewerBusy.hidden = true; switchViewerSource(asset.path, currentTime, wasPlaying || currentTime === 0); return;
+    }
+    if (profile === "auto") {
+      viewerState.sourcePlayable = false; viewerState.autoProxyReady = ""; viewerState.autoKeepSource = false;
+      switchViewerSource(asset.path, currentTime, wasPlaying || currentTime === 0);
+      targetProfile = viewerState.metadata && Number(viewerState.metadata.height) >= 1800 ? "1080" : "720";
+      viewerState.autoTimer = setTimeout(function () {
+        viewerState.autoKeepSource = viewerState.sourcePlayable; elements.viewerBusy.hidden = true;
+        if (viewerState.autoKeepSource && mediaTools) { mediaTools.cancelPreviewJob(asset.path); }
+      }, 4000);
+      if (!mediaTools) { return; }
+      elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "AUTO · 正在准备流畅预览…";
+      mediaTools.previewProxyFor(asset.path, targetProfile).then(function (previewPath) {
+        if (token !== viewerState.loadToken || viewerState.profile !== "auto") { return; }
+        viewerState.autoProxyReady = previewPath;
+        if (!viewerState.autoKeepSource || !viewerState.sourcePlayable) { clearTimeout(viewerState.autoTimer); elements.viewerBusy.hidden = true; switchViewerSource(previewPath, Number(media.currentTime) || currentTime, !media.paused || !viewerState.sourcePlayable); }
+      }).catch(function () { if (token === viewerState.loadToken) { elements.viewerBusy.hidden = true; } });
+      return;
+    }
+    elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "正在生成 " + profile + "p 播放代理…";
+    (mediaTools ? mediaTools.previewProxyFor(asset.path, profile) : Promise.resolve(asset.path)).then(function (previewPath) {
       if (token !== viewerState.loadToken || media !== viewerState.media) { return; }
-      media.addEventListener("loadedmetadata", restore, { once: true });
-      media.src = SeekLibrary.fileUrl(previewPath); media.load();
+      elements.viewerBusy.hidden = true; switchViewerSource(previewPath, currentTime, wasPlaying || currentTime === 0);
     }).catch(function (error) {
       if (token !== viewerState.loadToken) { return; }
       if (error && error.code === "JOB_CANCELLED" && viewerState.asset === asset && viewerState.profile === profile) {
         setTimeout(function () { if (viewerState.asset === asset && viewerState.profile === profile) { loadViewerProfile(profile, preserveTime); } }, 120);
         return;
       }
-      elements.viewerBusy.hidden = true; elements.proxySelect.disabled = false;
+      elements.viewerBusy.hidden = true;
       showNotice("无法准备播放代理：" + friendlyError(error), true, 6500);
     });
+  }
+
+  function switchViewerSource(filePath, currentTime, shouldPlay) {
+    var media = viewerState.media;
+    if (!media || !filePath) { return; }
+    media.addEventListener("loadedmetadata", function restorePosition() {
+      if (media !== viewerState.media) { return; }
+      if (isFinite(media.duration)) { media.currentTime = Math.max(0, Math.min(Number(currentTime) || 0, Math.max(0, media.duration - .001))); }
+      if (shouldPlay) { safePlay(media); }
+      updateViewerTimeline();
+    }, { once: true });
+    media.src = SeekLibrary.fileUrl(filePath); media.load();
   }
 
   function updateViewerSubtitle() {
@@ -1345,7 +1744,7 @@
     var duration;
     if (!media || typeof media.currentTime !== "number") { return; }
     duration = isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
-    elements.viewerTimecode.textContent = formatViewerTimecode(media.currentTime);
+    elements.viewerTimecode.textContent = viewerState.timeDisplayMode === "frames" ? Math.max(0, Math.round(media.currentTime * viewerFrameRate())) + " F" : formatViewerTimecode(media.currentTime);
     if (!viewerState.isSeeking && duration) { elements.viewerScrubber.value = String(Math.round(media.currentTime / duration * 1000)); }
   }
 
@@ -1391,6 +1790,7 @@
     frame = 1 / viewerFrameRate();
     maxIn = viewerState.outPoint !== null ? viewerState.outPoint - frame : isFinite(media.duration) ? media.duration - frame : media.currentTime;
     viewerState.inPoint = Math.max(0, Math.min(media.currentTime, Math.max(0, maxIn)));
+    viewerState.hasIn = true;
     updateViewerMarks();
   }
 
@@ -1401,11 +1801,20 @@
     if (!media || typeof media.currentTime !== "number") { return; }
     frame = 1 / viewerFrameRate(); duration = isFinite(media.duration) ? media.duration : Infinity;
     viewerState.outPoint = Math.min(duration, Math.max(media.currentTime, viewerState.inPoint + frame));
+    viewerState.hasOut = true;
     updateViewerMarks();
   }
 
   function updateViewerMarks() {
+    var media = viewerState.media;
+    var duration = media && isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
     elements.viewerMarks.textContent = "I " + formatViewerTimecode(viewerState.inPoint) + " / O " + (viewerState.outPoint === null ? "—" : formatViewerTimecode(viewerState.outPoint));
+    elements.viewerInMark.hidden = !viewerState.hasIn || !duration;
+    elements.viewerOutMark.hidden = !viewerState.hasOut || !duration;
+    if (duration) {
+      elements.viewerInMark.style.left = Math.max(0, Math.min(100, viewerState.inPoint / duration * 100)) + "%";
+      elements.viewerOutMark.style.left = Math.max(0, Math.min(100, viewerState.outPoint / duration * 100)) + "%";
+    }
   }
 
   function toggleViewerLoop() {
@@ -1417,19 +1826,18 @@
   function seekViewerFromSlider() {
     var media = viewerState.media;
     if (!media || !isFinite(media.duration) || media.duration <= 0) { return; }
-    viewerState.isSeeking = true; media.currentTime = Number(elements.viewerScrubber.value) / 1000 * media.duration; updateViewerTimeline();
+    viewerState.isSeeking = true;
+    media.currentTime = Math.max(0, Math.min(media.duration - .001, Number(elements.viewerScrubber.value) / 1000 * media.duration));
+    updateViewerTimeline();
   }
 
   function startViewerDrag(event) {
     var asset = viewerState.asset;
-    var filePath;
+    var result;
     if (state.hostId !== "PPRO" || !asset || asset.type === "lut") { event.preventDefault(); return; }
-    if ((event.altKey || altPressed) && asset.type === "video") {
-      filePath = viewerState.audioProxyPath;
-      if (!filePath) { event.preventDefault(); showNotice(viewerState.audioProxyStatus === "unavailable" ? "该视频没有可用音轨，无法仅拖入音频。" : "仅音频副本仍在准备，请稍后再按住 Alt 拖动。", viewerState.audioProxyStatus === "unavailable", 4000); return; }
-    } else { filePath = asset.path; }
-    if (!filePath) { event.preventDefault(); return; }
-    populateAdobeDragData(event, filePath);
+    result = FnOSInteractionTools.viewerDragPath(asset, event.altKey || altPressed, viewerState.audioProxyPath);
+    if (!result.ok) { event.preventDefault(); showNotice(viewerState.audioProxyStatus === "unavailable" ? "该视频没有可用音轨，无法仅拖入音频。" : "仅音频副本仍在准备，请稍后再按住 Alt 拖动。", viewerState.audioProxyStatus === "unavailable", 4000); return; }
+    populateAdobeDragData(event, result.path);
   }
 
   function captureViewerFrame() {
@@ -1594,18 +2002,32 @@
 
   function openRenameDialog(asset) {
     var extensionLength = asset.extension ? asset.extension.length + 1 : 0;
-    state.dialogAction = { type: "rename", assetId: asset.domId };
-    elements.dialogTitle.textContent = "重命名源文件";
-    elements.dialogMessage.textContent = "这会修改 NAS 上的真实文件名；若素材已导入 Adobe 工程，工程可能显示离线。MVP 暂不允许更改扩展名。";
+    state.dialogAction = { type: asset.type === "folder" ? "rename-folder" : "rename", assetId: asset.domId };
+    elements.dialogTitle.textContent = asset.type === "folder" ? "重命名文件夹" : "重命名源文件";
+    elements.dialogMessage.textContent = asset.type === "folder" ? "这会修改当前素材位置中的真实文件夹名称。" : "这会修改 NAS 上的真实文件名；若素材已导入 Adobe 工程，工程可能显示离线。不可在这里更改扩展名。";
     elements.renameField.hidden = false; elements.renameInput.value = asset.name;
     elements.dialogConfirmButton.textContent = "重命名"; elements.dialogConfirmButton.className = "button button-primary";
     elements.fileActionDialog.hidden = false; elements.renameInput.focus(); elements.renameInput.setSelectionRange(0, asset.name.length - extensionLength);
   }
 
-  function openTrashDialog(asset) {
-    state.dialogAction = { type: "trash", assetId: asset.domId };
-    elements.dialogTitle.textContent = "移到废纸篓？";
-    elements.dialogMessage.textContent = "将移动 NAS 上的“" + asset.name + "”。若共享盘不支持废纸篓，操作会失败并保留原文件；绝不会改为永久删除。已导入 Adobe 的引用可能离线。";
+  function openCreateFolderDialog() {
+    var destination = currentDestination();
+    if (!destination || !assetOps) { showNotice("请先勾选一个可用素材位置。", true, 4000); return; }
+    state.dialogAction = { type: "create-folder", destination: destination };
+    elements.dialogTitle.textContent = "新建文件夹";
+    elements.dialogMessage.textContent = "文件夹会创建在当前素材路径下。";
+    elements.renameField.hidden = false; elements.renameInput.value = "新建文件夹";
+    elements.dialogConfirmButton.textContent = "创建"; elements.dialogConfirmButton.className = "button button-primary";
+    elements.fileActionDialog.hidden = false; elements.renameInput.focus(); elements.renameInput.select();
+  }
+
+  function openTrashDialog(input) {
+    var assets = Array.isArray(input) ? input : [input];
+    assets = assets.filter(Boolean);
+    if (!assets.length) { return; }
+    state.dialogAction = { type: "trash", assetIds: assets.map(function (asset) { return asset.domId; }) };
+    elements.dialogTitle.textContent = assets.length > 1 ? "删除这 " + assets.length + " 项？" : "删除“" + assets[0].name + "”？";
+    elements.dialogMessage.textContent = "删除该文件会删除本地文件。系统会先尝试移入 macOS 废纸篓；若 SMB 共享不支持可恢复删除，操作会失败并保留原文件，不会执行永久删除。已导入 Adobe 的引用可能离线。";
     elements.renameField.hidden = true; elements.dialogConfirmButton.textContent = "移到废纸篓"; elements.dialogConfirmButton.className = "button button-danger";
     elements.fileActionDialog.hidden = false;
   }
@@ -1615,8 +2037,23 @@
   function confirmDialogAction() {
     var action = state.dialogAction;
     var asset = action && assetForId(action.assetId);
-    if (!asset || !fileOps) { closeDialog(); return; }
     elements.dialogConfirmButton.disabled = true;
+    if (action && action.type === "create-folder") {
+      assetOps.createFolder({ roots: state.roots, rootId: action.destination.rootId, parentPath: action.destination.path, name: elements.renameInput.value, onProgress: showOperationProgress }).then(function () {
+        closeDialog(); elements.dialogConfirmButton.disabled = false; showNotice("文件夹已创建。", false, 3500); scanAssets();
+      }).catch(function (error) { elements.dialogConfirmButton.disabled = false; showNotice("创建失败：" + friendlyError(error), true, 6000); });
+      return;
+    }
+    if (action && action.type === "trash") { performTrash((action.assetIds || []).map(assetForId).filter(Boolean)); return; }
+    if (!asset) { elements.dialogConfirmButton.disabled = false; closeDialog(); return; }
+    if (action.type === "rename-folder") {
+      assetOps.renameFolder({ roots: state.roots, folder: asset, newName: elements.renameInput.value, onProgress: showOperationProgress }).then(function (result) {
+        if (result.changed) { migrateLocalMeta(result.oldPath, result.path); }
+        closeDialog(); elements.dialogConfirmButton.disabled = false; showNotice("文件夹已重命名。", false, 3500); scanAssets();
+      }).catch(function (error) { elements.dialogConfirmButton.disabled = false; showNotice("重命名失败：" + friendlyError(error), true, 6000); });
+      return;
+    }
+    if (!fileOps) { elements.dialogConfirmButton.disabled = false; closeDialog(); return; }
     try { fileOps.validateSource(asset, state.roots); }
     catch (error) { elements.dialogConfirmButton.disabled = false; showNotice(error.message, true, 6000); closeDialog(); return; }
     if (action.type === "rename") { performRename(asset); }
@@ -1636,36 +2073,83 @@
     }
   }
 
-  function performTrash(asset) {
-    fileOps.moveToTrash(asset, state.roots).then(function () {
+  function performTrash(assets) {
+    assetOps.moveToTrash({ roots: state.roots, targets: assets, onProgress: showOperationProgress }).then(function () {
       elements.dialogConfirmButton.disabled = false;
-      closeDialog(); showNotice("文件已移到废纸篓。", false, 4500); scanAssets();
+      closeDialog(); state.selectedIds = {}; state.selectedId = null; showNotice("已移到 macOS 废纸篓，可从废纸篓恢复。", false, 4500); scanAssets();
     }).catch(function (error) {
       elements.dialogConfirmButton.disabled = false;
       showNotice("无法移到废纸篓，原文件已保留：" + friendlyError(error), true, 7000);
     });
   }
 
-  function runHostActionForAsset(asset, placeAtCurrentTime) {
-    if (!asset) { return Promise.reject(new Error("NO_ASSET")); }
-    elements.statusText.textContent = placeAtCurrentTime ? "正在放置素材…" : "正在导入素材…";
-    return runHostActionForPath(asset.path, placeAtCurrentTime, asset.name).then(function () {
-      elements.statusText.textContent = placeAtCurrentTime ? "已放置：" + asset.name : "已导入：" + asset.name;
-      showNotice(placeAtCurrentTime ? (state.hostId === "AEFT" ? "素材已加入当前合成。" : "素材已放到当前播放头。") : "素材已导入项目。", false, 3200);
+  function packageCurrentProject() {
+    var destinationResult;
+    var payload;
+    var script;
+    if (state.hostId !== "PPRO" || !csInterface || !projectPackager) { showNotice("项目素材打包仅支持 Premiere Pro。", true, 4500); return; }
+    if (!window.cep || !window.cep.fs || !window.cep.fs.showOpenDialogEx) { showNotice("无法打开目标文件夹选择器。", true, 4500); return; }
+    destinationResult = window.cep.fs.showOpenDialogEx(false, true, "选择项目素材打包位置", currentDestination() ? currentDestination().path : "", []);
+    if (!destinationResult || destinationResult.err !== 0 || !destinationResult.data || !destinationResult.data.length) { return; }
+    payload = JSON.stringify({ roots: state.roots.map(function (root) { return { id: root.id, path: root.path, label: root.label || displayNameForPath(root.path) }; }) });
+    script = "SeekBridge.listUsedPremiereMedia(" + JSON.stringify(payload) + ")";
+    elements.operationProgress.hidden = false; elements.operationProgressLabel.textContent = "正在读取 Premiere 时间线素材…"; elements.operationProgressBar.style.transform = "scaleX(0)";
+    elements.packageProjectButton.disabled = true;
+    csInterface.evalScript(script, function (rawResult) {
+      var hostResult;
+      try { hostResult = JSON.parse(rawResult); }
+      catch (error) { hostResult = { ok: false, message: rawResult || "Premiere 没有返回素材清单。" }; }
+      if (!hostResult.ok) { finishProjectPackageError(new Error(hostResult.message || "无法读取 Premiere 时间线素材。")); return; }
+      if (!hostResult.media || !hostResult.media.length) { finishProjectPackageError(new Error("当前 Premiere 项目的时间线没有使用已配置路径中的素材。")); return; }
+      projectPackager.packageProject({ destination: destinationResult.data[0], roots: state.roots, media: hostResult.media, project: hostResult, onProgress: renderPackageProgress }).then(function (result) {
+        elements.packageProjectButton.disabled = false; elements.operationProgress.hidden = true;
+        if (result.complete) { showNotice("项目素材打包完成，共复制 " + result.copied.length + " 个实际使用文件。", false, 7000); }
+        else { showNotice("打包完成，但有 " + (result.offline.length + result.failed.length + result.skipped.length) + " 项离线或未复制；详情见打包清单。", true, 9000); }
+        revealDirectory(result.destination);
+      }).catch(finishProjectPackageError);
+    });
+  }
+
+  function renderPackageProgress(progress) {
+    var percent = Math.max(0, Math.min(100, Math.round((Number(progress.percent) || 0) * 100)));
+    elements.operationProgress.hidden = false;
+    elements.operationProgressLabel.textContent = progress.phase === "inspect" ? "核对实际使用素材 " + progress.completed + "/" + progress.total : progress.phase === "copy" ? "复制项目素材 " + progress.completed + "/" + progress.total + " · " + percent + "%" : "生成打包清单…";
+    elements.operationProgressBar.style.transform = "scaleX(" + (percent / 100) + ")";
+  }
+
+  function finishProjectPackageError(error) {
+    elements.packageProjectButton.disabled = false; elements.operationProgress.hidden = true;
+    showNotice("项目素材打包失败：" + friendlyError(error), true, 8500);
+  }
+
+  function revealDirectory(directory) {
+    if (!directory || !nodeAvailable) { return; }
+    var processHandle = childProcess.spawn("/usr/bin/open", [directory], { detached: true });
+    processHandle.on("error", function () {}); processHandle.unref();
+  }
+
+  function runHostActionForAssets(assets, placeAtCurrentTime, position) {
+    var files = (assets || []).filter(function (asset) { return asset && asset.type !== "folder" && asset.type !== "lut"; });
+    var completed = 0;
+    if (!files.length) { return Promise.reject(new Error("没有可执行的媒体素材。")); }
+    if (placeAtCurrentTime && position !== "end") { files = files.slice().reverse(); }
+    return files.reduce(function (promise, asset) {
+      return promise.then(function () { return runHostActionForPath(asset.path, placeAtCurrentTime, asset.name, position).then(function () { completed += 1; }); });
+    }, Promise.resolve()).then(function () {
+      showNotice(placeAtCurrentTime ? "已插入 " + completed + " 项素材。" : "已导入 " + completed + " 项素材。", false, 4200);
     }).catch(function (error) {
-      elements.statusText.textContent = "操作未完成";
-      showNotice(error.message || "Adobe 操作失败，请重试。", true, 6500);
+      showNotice("Adobe 操作未完成：" + friendlyError(error), true, 6500);
       throw error;
     });
   }
 
-  function runHostActionForPath(filePath, placeAtCurrentTime, label) {
+  function runHostActionForPath(filePath, placeAtCurrentTime, label, position) {
     var method;
     var payload;
     var script;
     if (!csInterface || state.hostId === "BROWSER") { return Promise.reject(new Error("请在 Premiere Pro 或 After Effects 中执行此操作。")); }
     method = placeAtCurrentTime ? (state.hostId === "AEFT" ? "importMediaToComp" : "importMediaToSequence") : "importMedia";
-    payload = JSON.stringify({ path: filePath }); script = "SeekBridge." + method + "(" + JSON.stringify(payload) + ")";
+    payload = JSON.stringify({ path: filePath, position: position || "current" }); script = "SeekBridge." + method + "(" + JSON.stringify(payload) + ")";
     return new Promise(function (resolve, reject) {
       csInterface.evalScript(script, function (rawResult) {
         var result;
@@ -1689,11 +2173,31 @@
   }
   function syncSortDirection() {
     var asc = state.preferences.sortDirection === "asc";
-    elements.sortDirectionButton.innerHTML = asc ? "&#8593;" : "&#8595;"; elements.sortDirectionButton.title = asc ? "升序" : "降序";
+    elements.sortDirectionButton.textContent = asc ? "↑ 升序" : "↓ 降序"; elements.sortDirectionButton.title = asc ? "升序" : "降序";
   }
   function syncGridZoom() {
+    var size = Math.max(88, Math.min(260, Number(state.preferences.zoom) || 128));
+    var available = elements.assetGrid && elements.assetGrid.clientWidth ? Math.max(88, elements.assetGrid.clientWidth - 4) : size;
+    var effectiveSize = Math.min(size, available);
+    var ratio = (size - 88) / 172;
     elements.assetGrid.classList.remove("grid-small", "grid-medium", "grid-large");
-    elements.assetGrid.style.setProperty("--card-min", Math.max(88, Math.min(260, Number(state.preferences.zoom) || 128)) + "px");
+    elements.assetGrid.style.setProperty("--card-min", effectiveSize + "px");
+    elements.assetGrid.style.setProperty("--badge-font", (6 + ratio * 2).toFixed(2) + "px");
+    elements.assetGrid.style.setProperty("--badge-line", (9 + ratio * 2).toFixed(2) + "px");
+    elements.assetGrid.style.setProperty("--favorite-size", (19 + ratio * 7).toFixed(2) + "px");
+    elements.assetGrid.style.setProperty("--favorite-font", (12 + ratio * 5).toFixed(2) + "px");
+    elements.assetGrid.style.setProperty("--label-size", (6 + ratio * 2).toFixed(2) + "px");
+  }
+  function toggleViewMode() {
+    state.preferences.viewMode = state.preferences.viewMode === "list" ? "card" : "list";
+    persistPreferences(); syncViewMode(); renderAssets();
+  }
+  function syncViewMode() {
+    var list = state.preferences.viewMode === "list";
+    elements.assetGrid.classList.toggle("is-list-view", list);
+    elements.viewModeButton.classList.toggle("is-active", list);
+    elements.viewModeButton.querySelector("span").className = list ? "icon-view-list" : "icon-view-grid";
+    elements.viewModeButton.setAttribute("aria-label", list ? "切换到卡片模式" : "切换到列表模式");
   }
   function showEmpty(title, message) { elements.emptyTitle.textContent = title; elements.emptyMessage.textContent = message; elements.emptyState.hidden = false; }
   function showNotice(message, isError, duration) { clearTimeout(noticeTimer); elements.notice.hidden = false; elements.notice.textContent = message; elements.notice.classList.toggle("is-error", !!isError); if (duration !== 0) { noticeTimer = setTimeout(function () { elements.notice.hidden = true; }, duration || 4000); } }
@@ -1701,9 +2205,7 @@
 
   function init() {
     cacheElements(); initializeRoots(); detectHost(); bindEvents();
-    elements.searchPopover.hidden = !state.preferences.searchOpen;
-    elements.searchToggleButton.setAttribute("aria-expanded", state.preferences.searchOpen ? "true" : "false");
-    renderLocations(); syncSortDirection(); syncGridZoom(); syncFilterBadge(); scanAssets();
+    renderLocations(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncFilterBadge(); scanAssets();
   }
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }
 }());

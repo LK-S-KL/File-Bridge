@@ -1,4 +1,4 @@
-LK‘s File Bridge 0.4.0 · 内测版
+LK‘s File Bridge 0.5.0 · 第四版内测
 
 这是给同事体验的 macOS Adobe CEP 内测包，支持：
 - Adobe Premiere Pro 25.0+
@@ -14,6 +14,7 @@ LK‘s File Bridge 0.4.0 · 内测版
 
 说明
 - 这是未签名 CEP 内测包，安装脚本会为 CSXS 12 开启 PlayerDebugMode；这是 CEP 内测所需设置。
+- 第四版重点新增：自定义播放器、多选批处理、文件夹管理、代理转码进度、列表模式、设计文件预览和 Premiere 实际使用素材打包。
 - 预览、搜索、元数据、收藏、标签和 LUT 预览不会自动导入 Adobe 工程。
 - 只有拖放、右键导入/放置或“截图入项目”才会改变工程。
 - 关闭面板或退出 Adobe 前，请等待正在进行的转码提示结束。

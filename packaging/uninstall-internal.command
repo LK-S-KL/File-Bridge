@@ -1,7 +1,8 @@
 #!/bin/zsh
 set -euo pipefail
 
-DESTINATION="${HOME}/Library/Application Support/Adobe/CEP/extensions/com.fnnas.seekbridge.mvp"
+INSTALL_HOME="${LKFB_INSTALL_HOME:-${HOME}}"
+DESTINATION="${INSTALL_HOME}/Library/Application Support/Adobe/CEP/extensions/com.fnnas.seekbridge.mvp"
 
 if [[ ! -e "${DESTINATION}" && ! -L "${DESTINATION}" ]]; then
   print "未找到 LK‘s File Bridge，无需卸载。"

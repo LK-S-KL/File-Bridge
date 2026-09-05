@@ -12,12 +12,14 @@
     schemaVersion: 1,
     roots: [],
     assetMeta: {},
+    libraryCache: {},
     preferences: {
       sortBy: "modified",
       sortDirection: "desc",
       zoom: 128,
       scanMode: "single",
       activeRootId: "",
+      viewMode: "card",
       searchOpen: false,
       colorManagementNoticeSeen: false
     }
@@ -47,6 +49,19 @@
     if (state.assetMeta && typeof state.assetMeta === "object") {
       result.assetMeta = state.assetMeta;
     }
+    if (state.libraryCache && typeof state.libraryCache === "object") {
+      Object.keys(state.libraryCache).slice(0, 128).forEach(function (rootId) {
+        var items = state.libraryCache[rootId];
+        if (!Array.isArray(items)) { return; }
+        result.libraryCache[rootId] = items.slice(0, 10000).filter(function (item) { return item && typeof item.path === "string" && typeof item.name === "string"; }).map(function (item) {
+          return {
+            name: item.name, path: item.path, relativePath: String(item.relativePath || item.name), folder: String(item.folder || "根目录"),
+            extension: String(item.extension || ""), type: String(item.type || ""), size: Number(item.size) || 0,
+            modifiedMs: Number(item.modifiedMs) || 0
+          };
+        });
+      });
+    }
     if (state.preferences && typeof state.preferences === "object") {
       result.preferences.sortBy = state.preferences.sortBy || result.preferences.sortBy;
       result.preferences.sortDirection = state.preferences.sortDirection === "asc" ? "asc" : "desc";
@@ -58,6 +73,7 @@
       }
       result.preferences.scanMode = ["single", "selected", "all"].indexOf(state.preferences.scanMode) !== -1 ? state.preferences.scanMode : result.preferences.scanMode;
       result.preferences.activeRootId = String(state.preferences.activeRootId || "");
+      result.preferences.viewMode = state.preferences.viewMode === "list" ? "list" : "card";
       result.preferences.searchOpen = state.preferences.searchOpen === true;
       result.preferences.colorManagementNoticeSeen = state.preferences.colorManagementNoticeSeen === true;
     }

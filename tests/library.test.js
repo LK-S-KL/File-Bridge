@@ -128,3 +128,16 @@ test("cooperative scan can be cancelled before starting another SMB directory", 
     fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+test("cooperative scan can include folders without losing recursive media", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "lkfb-library-folders-"));
+  try {
+    fs.mkdirSync(path.join(fixture, "素材夹", "子目录"), { recursive: true });
+    fs.writeFileSync(path.join(fixture, "素材夹", "子目录", "clip.mp4"), "video");
+    const result = await library.scanLibraryAsync(fixture, { fs, path }, { includeDirectories: true, batchSize: 1 });
+    assert.equal(result.assets.filter((asset) => asset.type === "folder").length, 2);
+    assert.equal(result.assets.some((asset) => asset.name === "clip.mp4"), true);
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});

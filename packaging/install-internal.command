@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 SOURCE_DIR="${SCRIPT_DIR}/extension"
-EXTENSIONS_DIR="${HOME}/Library/Application Support/Adobe/CEP/extensions"
+INSTALL_HOME="${LKFB_INSTALL_HOME:-${HOME}}"
+EXTENSIONS_DIR="${INSTALL_HOME}/Library/Application Support/Adobe/CEP/extensions"
 DESTINATION="${EXTENSIONS_DIR}/com.fnnas.seekbridge.mvp"
 
 if [[ ! -d "${SOURCE_DIR}" ]]; then
@@ -19,7 +20,9 @@ if [[ -e "${DESTINATION}" || -L "${DESTINATION}" ]]; then
 fi
 
 ditto --noqtn "${SOURCE_DIR}" "${DESTINATION}"
-defaults write com.adobe.CSXS.12 PlayerDebugMode -string "1"
+if [[ "${LKFB_SKIP_DEFAULTS:-0}" != "1" ]]; then
+  defaults write com.adobe.CSXS.12 PlayerDebugMode -string "1"
+fi
 
 print "LK‘s File Bridge 已安装。"
 print "请完整退出并重新打开 Premiere Pro 或 After Effects。"

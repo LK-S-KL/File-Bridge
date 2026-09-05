@@ -366,7 +366,8 @@
     var proxyDirectory = path.join(cacheRoot, "proxies");
     var frameDirectory = path.join(cacheRoot, "frames");
     var audioProxyDirectory = path.join(cacheRoot, "audio");
-    var captureDirectory = path.join(os.homedir(), "Pictures", "fnOS Bridge Captures");
+    var stillPreviewDirectory = path.join(cacheRoot, "stills");
+    var captureDirectory = path.join(os.homedir(), "Pictures", "LK‘s File Bridge Captures");
     var memoryMetadata = {};
     var pendingMetadata = {};
     var pendingOutputs = {};
@@ -424,13 +425,13 @@
     }
 
     function ensureDirectories() {
-      [cacheRoot, metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory].forEach(function (directory) {
+      [cacheRoot, metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory, stillPreviewDirectory].forEach(function (directory) {
         fs.mkdirSync(directory, { recursive: true });
       });
     }
 
     function scheduleCachePrune() {
-      var directories = [metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory];
+      var directories = [metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory, stillPreviewDirectory];
       var timer;
       if (cachePruneScheduled) { return; }
       cachePruneScheduled = true;
@@ -518,13 +519,14 @@
             else { current.resolve({ stdout: stdout, stderr: stderr }); }
             pumpFfmpegQueue();
           });
+          if (current.onOutput && current.child.stdout) { current.child.stdout.on("data", current.onOutput); }
         }(job));
       }
     }
 
-    function execFileQueued(binary, args, options, jobKey) {
+    function execFileQueued(binary, args, options, jobKey, onOutput) {
       return new Promise(function (resolve, reject) {
-        var job = { id: nextFfmpegJobId, binary: binary, args: args, options: options, key: jobKey || "derived", resolve: resolve, reject: reject, child: null, cancelled: false };
+        var job = { id: nextFfmpegJobId, binary: binary, args: args, options: options, key: jobKey || "derived", onOutput: onOutput, resolve: resolve, reject: reject, child: null, cancelled: false };
         nextFfmpegJobId += 1;
         if (/^(preview|audio|capture|user-transcode):/.test(job.key)) { ffmpegQueue.unshift(job); }
         else { ffmpegQueue.push(job); }
@@ -563,6 +565,8 @@
       cancelJobKey("audio:" + filePath);
     }
 
+    function cancelPreviewJob(filePath) { cancelJobKey("preview:" + filePath); }
+
     function prioritizeViewer() { cancelJobPrefix("derived:"); }
 
     function cacheTemporaryPath(destination) {
@@ -584,7 +588,7 @@
       });
     }
 
-    function runFfmpeg(args, destination, timeout, jobKey) {
+    function runFfmpeg(args, destination, timeout, jobKey, onOutput) {
       var ffmpeg = findBinary("ffmpeg");
       var isCacheOutput = destination.indexOf(cacheRoot + path.sep) === 0;
       var actualDestination = isCacheOutput ? cacheTemporaryPath(destination) : destination;
@@ -596,7 +600,7 @@
       if (isCacheOutput) {
         for (outputIndex = actualArgs.length - 1; outputIndex >= 0; outputIndex -= 1) { if (actualArgs[outputIndex] === destination) { actualArgs[outputIndex] = actualDestination; break; } }
       }
-      return execFileQueued(ffmpeg, actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey).then(function (result) {
+      return execFileQueued(ffmpeg, actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput).then(function (result) {
         if (!usableCacheFile(actualDestination)) { throw new Error(result.stderr || "OUTPUT_NOT_CREATED"); }
         return isCacheOutput ? publishCacheOutput(actualDestination, destination) : destination;
       }).catch(function (error) {
@@ -621,13 +625,13 @@
         "4k": "3840:2160",
         "1080": "1920:1080",
         "720": "1280:720",
-        "580": "1024:580",
+        "480": "854:480",
         "360": "640:360"
       };
       return {
         name: dimensions[value] !== undefined ? value : "1080",
         scale: dimensions[value] !== undefined ? dimensions[value] : "1920:1080",
-        bitrate: value === "4k" || value === "source" ? "16M" : value === "1080" ? "8M" : value === "720" ? "5M" : value === "580" ? "3M" : "1.5M"
+        bitrate: value === "4k" || value === "source" ? "16M" : value === "1080" ? "8M" : value === "720" ? "5M" : value === "480" ? "2.5M" : "1.5M"
       };
     }
 
@@ -705,20 +709,42 @@
       });
     }
 
-    function transcodeTo(filePath, destination, profile) {
+    function progressReader(duration, onProgress) {
+      var buffer = "";
+      return function (chunk) {
+        var lines;
+        if (typeof onProgress !== "function") { return; }
+        buffer += String(chunk || ""); lines = buffer.split(/\r?\n/); buffer = lines.pop();
+        lines.forEach(function (line) {
+          var parts = line.split("=");
+          var micros;
+          if (parts[0] === "out_time_ms" || parts[0] === "out_time_us") {
+            micros = Number(parts[1]);
+            if (isFinite(micros) && duration > 0) { onProgress({ ratio: Math.max(0, Math.min(.99, micros / 1000000 / duration)), seconds: micros / 1000000, duration: duration }); }
+          } else if (line === "progress=end") { onProgress({ ratio: 1, seconds: duration, duration: duration }); }
+        });
+      };
+    }
+
+    function transcodeTo(filePath, destination, profile, onProgress) {
       var config = profileConfig(profile);
       var filter = config.scale ? "scale=" + config.scale + ":force_original_aspect_ratio=decrease,pad=" + config.scale + ":(ow-iw)/2:(oh-ih)/2,format=yuv420p" : "format=yuv420p";
-      var hardware = ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-i", filePath, "-vf", filter, "-c:v", "h264_videotoolbox", "-b:v", config.bitrate, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", destination];
-      var software = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-vf", filter, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-threads", "0", "-y", destination];
-      return runFfmpeg(hardware, destination, 600000, "user-transcode:" + destination).catch(function (error) {
-        if (error && error.code === "JOB_CANCELLED") { throw error; }
-        return runFfmpeg(software, destination, 600000, "user-transcode:" + destination);
+      return metadataFor(filePath).then(function (metadata) {
+        var readProgress = progressReader(Number(metadata.duration) || 0, onProgress);
+        var progressArgs = ["-progress", "pipe:1", "-nostats"];
+        var hardware = ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-i", filePath, "-vf", filter, "-c:v", "h264_videotoolbox", "-b:v", config.bitrate, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"].concat(progressArgs, ["-y", destination]);
+        var software = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-vf", filter, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-threads", "0"].concat(progressArgs, ["-y", destination]);
+        return runFfmpeg(hardware, destination, 600000, "user-transcode:" + destination, readProgress).catch(function (error) {
+          if (error && error.code === "JOB_CANCELLED") { throw error; }
+          if (typeof onProgress === "function") { onProgress({ ratio: 0, seconds: 0, duration: Number(metadata.duration) || 0, fallback: true }); }
+          return runFfmpeg(software, destination, 600000, "user-transcode:" + destination, readProgress);
+        });
       });
     }
 
     function isOwnedTranscodeTemporary(temporaryPath, sourcePath) {
       var name = path.basename(temporaryPath);
-      return path.dirname(temporaryPath) === path.dirname(sourcePath) && name.charAt(0) === "." && /\.rove-part\.mp4$/.test(name);
+      return path.dirname(temporaryPath) === path.dirname(sourcePath) && name.charAt(0) === "." && /\.lkfb-part\.mp4$/.test(name);
     }
 
     function cleanupTranscodeTemporary(temporaryPath, sourcePath) {
@@ -730,7 +756,7 @@
 
     function claimTranscodeOutput(temporaryPath, sourcePath, profile) {
       var directory = path.dirname(sourcePath);
-      var base = path.basename(sourcePath, path.extname(sourcePath)).slice(0, 120) + "_" + profile + "p";
+      var base = path.basename(sourcePath, path.extname(sourcePath)).slice(0, 120) + "_Proxy_" + profile + "p";
       if (!isOwnedTranscodeTemporary(temporaryPath, sourcePath)) { return Promise.reject(new Error("INVALID_TEMPORARY_OUTPUT")); }
       return new Promise(function (resolve, reject) {
         function finish(destination) {
@@ -798,6 +824,45 @@
       });
     }
 
+    function previewStillFor(filePath) {
+      return statSource(filePath).then(function (stat) {
+        var key = cacheKey(filePath, stat) + "-ql-v1";
+        var destination = path.join(stillPreviewDirectory, key + ".png");
+        var workDirectory = path.join(stillPreviewDirectory, "." + key + "-" + process.pid);
+        var extension = String(path.extname(filePath)).toLowerCase();
+        if (usableCacheFile(destination)) { return destination; }
+        if (extension === ".psd" || extension === ".psb") {
+          return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, "derived:" + destination);
+        }
+        fs.mkdirSync(workDirectory, { recursive: true });
+        function quickLookFallback() { return new Promise(function (resolve, reject) {
+          childProcess.execFile("/usr/bin/qlmanage", ["-t", "-s", "960", "-o", workDirectory, filePath], { timeout: 8000, maxBuffer: 1024 * 1024 }, function (error) {
+            if (error) { reject(error); return; }
+            fs.readdir(workDirectory, function (readError, names) {
+              var generated;
+              if (readError) { reject(readError); return; }
+              generated = names.filter(function (name) { return /\.png$/i.test(name); })[0];
+              if (!generated) { reject(new Error("QUICKLOOK_OUTPUT_NOT_CREATED")); return; }
+              fs.copyFile(path.join(workDirectory, generated), destination, function (copyError) {
+                fs.unlink(path.join(workDirectory, generated), function () { fs.rmdir(workDirectory, function () {}); });
+                if (copyError) { reject(copyError); return; }
+                resolve(destination);
+              });
+            });
+          });
+        }); }
+        var pdfRenderer = ["/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm"].filter(function (candidate) { return fs.existsSync(candidate); })[0];
+        if (!pdfRenderer) { return quickLookFallback(); }
+        return new Promise(function (resolve, reject) {
+          var destinationBase = destination.slice(0, -4);
+          childProcess.execFile(pdfRenderer, ["-png", "-f", "1", "-l", "1", "-singlefile", "-scale-to", "960", filePath, destinationBase], { timeout: 45000, maxBuffer: 1024 * 1024 }, function (error) {
+            if (!error && usableCacheFile(destination)) { resolve(destination); return; }
+            reject(error || new Error("PDF_PREVIEW_NOT_CREATED"));
+          });
+        }).catch(quickLookFallback);
+      });
+    }
+
     function spriteFor(filePath) {
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
@@ -860,6 +925,7 @@
       metadataFor: metadataFor,
       posterFor: function (filePath) { return generateImage(filePath, "poster"); },
       waveformFor: function (filePath) { return generateImage(filePath, "waveform"); },
+      previewStillFor: previewStillFor,
       spriteFor: spriteFor,
       previewProxyFor: previewProxyFor,
       audioProxyFor: audioProxyFor,
@@ -869,6 +935,7 @@
       claimTranscodeOutput: claimTranscodeOutput,
       cleanupTranscodeTemporary: cleanupTranscodeTemporary,
       cancelViewerJobs: cancelViewerJobs,
+      cancelPreviewJob: cancelPreviewJob,
       prioritizeViewer: prioritizeViewer,
       findBinary: findBinary
     };

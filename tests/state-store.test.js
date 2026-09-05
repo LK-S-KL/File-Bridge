@@ -18,12 +18,14 @@ test("persists multiple roots and local asset metadata atomically", () => {
         { id: "two", path: "/Volumes/素材二", label: "素材二", enabled: true }
       ],
       assetMeta: { "/Volumes/素材一/a.mp4": { favorite: true, label: "blue" } },
+      libraryCache: { one: [{ name: "a.mp4", path: "/Volumes/素材一/a.mp4", relativePath: "a.mp4", folder: "根目录", extension: "mp4", type: "video", size: 12, modifiedMs: 20 }] },
       preferences: {
         sortBy: "size",
         sortDirection: "asc",
         zoom: 176,
         scanMode: "selected",
-        activeRootId: "two"
+        activeRootId: "two",
+        viewMode: "list"
       }
     });
     const loaded = store.load();
@@ -33,6 +35,8 @@ test("persists multiple roots and local asset metadata atomically", () => {
     assert.equal(loaded.preferences.zoom, 176);
     assert.equal(loaded.preferences.scanMode, "selected");
     assert.equal(loaded.preferences.activeRootId, "two");
+    assert.equal(loaded.preferences.viewMode, "list");
+    assert.equal(loaded.libraryCache.one[0].name, "a.mp4");
     assert.equal(fs.statSync(store.path).mode & 0o777, 0o600);
     const leftovers = fs.readdirSync(path.dirname(store.path)).filter((name) => name.endsWith(".tmp"));
     assert.deepEqual(leftovers, []);

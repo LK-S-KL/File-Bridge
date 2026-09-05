@@ -167,8 +167,9 @@ test("probes media and creates a cached sprite and waveform without changing the
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-tools-"));
   const sourcePath = path.join(fixture, "source clip.mp4");
   const movPath = path.join(fixture, "source clip.mov");
-  const transcodePath = path.join(fixture, "source clip_360p.mp4");
-  const transcodeTemporaryPath = path.join(fixture, ".source clip-test.rove-part.mp4");
+  const aiPath = path.join(fixture, "design preview.ai");
+  const transcodePath = path.join(fixture, "source clip_Proxy_360p.mp4");
+  const transcodeTemporaryPath = path.join(fixture, ".source clip-test.lkfb-part.mp4");
   const service = mediaTools.create({
     fs,
     path,
@@ -186,6 +187,20 @@ test("probes media and creates a cached sprite and waveform without changing the
   }
 
   try {
+    const pdfObjects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Contents 4 0 R >>",
+      "<< /Length 31 >>\nstream\n1 0.3 0.1 rg 0 0 100 100 re f\nendstream"
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    pdfObjects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+    const xref = Buffer.byteLength(pdf);
+    pdf += `xref\n0 ${pdfObjects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach((offset) => { pdf += `${String(offset).padStart(10, "0")} 00000 n \n`; });
+    pdf += `trailer\n<< /Size ${pdfObjects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    fs.writeFileSync(aiPath, pdf, "binary");
     childProcess.execFileSync(ffmpeg, [
       "-hide_banner", "-loglevel", "error",
       "-f", "lavfi", "-i", "testsrc2=duration=2:size=320x180:rate=24",
@@ -230,6 +245,13 @@ test("probes media and creates a cached sprite and waveform without changing the
     assert.equal(spriteMetadata.resolution, "960 × 408");
     assert.equal(waveformMetadata.resolution, "600 × 120");
 
+    if (fs.existsSync("/opt/homebrew/bin/pdftoppm") || fs.existsSync("/usr/local/bin/pdftoppm")) {
+      const designPreview = await service.previewStillFor(aiPath);
+      assert.equal(path.extname(designPreview), ".png");
+      assert.equal(fs.existsSync(designPreview), true);
+      assert.ok(fs.statSync(designPreview).size > 0);
+    }
+
     const ordinaryPreview = await service.previewProxyFor(sourcePath, "source");
     assert.equal(ordinaryPreview, sourcePath, "browser-compatible source media should not be transcoded");
 
@@ -258,15 +280,17 @@ test("probes media and creates a cached sprite and waveform without changing the
 
     const projectFramePath = await service.captureFrameForProject(sourcePath, 0.75);
     assert.equal(path.extname(projectFramePath), ".png");
-    assert.equal(projectFramePath.startsWith(path.join(fixture, "Pictures", "fnOS Bridge Captures")), true);
+    assert.equal(projectFramePath.startsWith(path.join(fixture, "Pictures", "LK‘s File Bridge Captures")), true);
     assert.equal(fs.existsSync(projectFramePath), true);
     const projectFrameMetadata = await service.metadataFor(projectFramePath);
     assert.equal(projectFrameMetadata.resolution, "320 × 180");
 
     fs.writeFileSync(transcodePath, "existing user file", "utf8");
-    await service.transcodeTo(sourcePath, transcodeTemporaryPath, "360");
+    const transcodeProgress = [];
+    await service.transcodeTo(sourcePath, transcodeTemporaryPath, "360", (progress) => transcodeProgress.push(progress.ratio));
     const transcoded = await service.claimTranscodeOutput(transcodeTemporaryPath, sourcePath, "360");
-    assert.equal(transcoded, path.join(fixture, "source clip_360p-2.mp4"));
+    assert.equal(transcoded, path.join(fixture, "source clip_Proxy_360p-2.mp4"));
+    assert.equal(transcodeProgress.at(-1), 1);
     assert.equal(fs.readFileSync(transcodePath, "utf8"), "existing user file");
     assert.equal(fs.existsSync(transcoded), true);
     assert.ok(fs.statSync(transcoded).size > 0);

@@ -21,6 +21,7 @@
       </header>
 
       <section class="location-bar" aria-label="素材位置">
+        <button id="upFolderButton" class="icon-button folder-up" type="button" title="返回上一级" aria-label="返回上一级" hidden><span class="icon-up" aria-hidden="true"></span></button>
         <button id="locationsButton" class="path-button" type="button" aria-haspopup="true" aria-expanded="false">
           <span class="status-dot" id="mountStatus"></span>
           <span id="rootLabel" class="path-label">正在检查素材位置...</span>
@@ -31,17 +32,31 @@
 
       <main class="workspace">
         <div class="toolbar" role="toolbar" aria-label="素材工具栏">
-          <button id="searchToggleButton" class="tool-button icon-tool" type="button" title="搜索" data-hint="搜索素材" aria-label="打开搜索" aria-expanded="false"><span class="toolbar-magnifier" aria-hidden="true"></span></button>
-          <div id="searchPopover" class="toolbar-search" hidden>
-          <label class="search-field">
-            <span class="search-icon" aria-hidden="true"></span>
-            <input id="searchInput" type="search" placeholder="搜索文件名或文件夹" autocomplete="off" />
-            <button id="clearSearchButton" class="clear-search" type="button" title="清除搜索" aria-label="清除搜索">&#215;</button>
-          </label>
+          <div class="toolbar-left">
+            <button id="selectAllButton" class="tool-button icon-tool" type="button" data-hint="全选当前素材" aria-label="全选当前素材"><span class="icon-select-all" aria-hidden="true"></span></button>
+            <button id="favoriteOnlyButton" class="tool-button icon-tool" type="button" title="只看收藏" data-hint="只看收藏" aria-label="只看收藏" aria-pressed="false"><span class="icon-star" aria-hidden="true"></span></button>
+            <button id="sortButton" class="tool-button icon-tool" type="button" data-hint="排序" aria-label="排序" aria-haspopup="true" aria-expanded="false"><span class="icon-sort" aria-hidden="true"></span></button>
+            <button id="filterButton" class="tool-button icon-tool" type="button" data-hint="筛选" aria-label="筛选" aria-haspopup="true" aria-expanded="false"><span class="icon-filter" aria-hidden="true"></span><span id="filterBadge" class="filter-badge" hidden>0</span></button>
+            <button id="viewModeButton" class="tool-button icon-tool" type="button" data-hint="切换列表 / 卡片" aria-label="切换列表或卡片模式"><span class="icon-view-grid" aria-hidden="true"></span></button>
+            <button id="packageProjectButton" class="tool-button icon-tool" type="button" data-hint="打包当前 Premiere 项目实际使用的素材" aria-label="打包当前项目素材"><span class="icon-package" aria-hidden="true"></span></button>
           </div>
-          <button id="favoriteOnlyButton" class="tool-button icon-tool" type="button" title="只看收藏" data-hint="只看收藏" aria-label="只看收藏" aria-pressed="false">&#9734;</button>
-          <label class="sort-control" title="排序依据">
-            <span class="sr-only">排序依据</span>
+          <div class="toolbar-right">
+            <label class="search-field toolbar-inline-search">
+              <span class="search-icon" aria-hidden="true"></span>
+              <input id="searchInput" type="search" placeholder="搜索素材" autocomplete="off" />
+              <button id="clearSearchButton" class="clear-search" type="button" title="清除搜索" aria-label="清除搜索">&#215;</button>
+            </label>
+            <label class="zoom-control" title="缩略图大小">
+              <span class="icon-thumb-small" aria-hidden="true"></span>
+              <input id="zoomRange" type="range" min="88" max="260" step="1" value="128" aria-label="缩略图大小" />
+              <span class="icon-thumb-large" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
+
+        <div id="sortPopover" class="popover sort-popover" hidden>
+          <div class="popover-heading"><strong>排序</strong></div>
+          <label class="field-label">排序依据
             <select id="sortSelect">
               <option value="modified">修改日期</option>
               <option value="name">文件名</option>
@@ -50,14 +65,7 @@
               <option value="duration">时长</option>
             </select>
           </label>
-          <button id="sortDirectionButton" class="tool-button icon-tool" type="button" title="降序" data-hint="切换升序 / 降序" aria-label="切换升序降序">&#8595;</button>
-          <button id="filterButton" class="tool-button" type="button" data-hint="按大小、格式、标签筛选" aria-haspopup="true" aria-expanded="false">筛选<span id="filterBadge" class="filter-badge" hidden>0</span></button>
-          <label class="zoom-control" title="缩略图大小" data-hint="调整缩略图大小">
-            <span aria-hidden="true">小</span>
-            <input id="zoomRange" type="range" min="88" max="260" step="1" value="128" aria-label="缩略图大小" />
-            <span aria-hidden="true">大</span>
-          </label>
-          <span id="resultCount" class="result-count">0 项</span>
+          <button id="sortDirectionButton" class="menu-action sort-direction-action" type="button">降序</button>
         </div>
 
         <div class="filter-row" role="group" aria-label="素材类型">
@@ -66,6 +74,7 @@
           <button class="filter-button" type="button" data-filter="image">图片</button>
           <button class="filter-button" type="button" data-filter="audio">音频</button>
           <button class="filter-button" type="button" data-filter="lut">LUT</button>
+          <span id="resultCount" class="result-count">0 项</span>
         </div>
 
         <section id="selectionDock" class="selection-dock" hidden aria-label="当前素材操作">
@@ -82,6 +91,7 @@
         </section>
 
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <div id="operationProgress" class="operation-progress" role="status" aria-live="polite" hidden><span id="operationProgressLabel"></span><div><i id="operationProgressBar"></i></div></div>
         <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
 
         <section id="emptyState" class="empty-state" hidden>
@@ -95,13 +105,10 @@
     </div>
 
     <div id="locationsPopover" class="popover locations-popover" hidden>
-      <div class="popover-heading"><strong>素材位置</strong><span>可同时读取多个文件夹</span></div>
-      <label class="field-label">本次浏览范围
-        <select id="scanModeSelect"><option value="single">当前一组</option><option value="selected">自定义多组</option><option value="all">全部位置</option></select>
-      </label>
-      <p id="scanModeHint" class="popover-hint">点击位置切换当前组；自定义模式可勾选多组。</p>
+      <div class="popover-heading"><strong>素材位置</strong><button id="toggleAllRootsButton" class="text-button" type="button">全选</button></div>
+      <p class="popover-hint">勾选一组或多组位置；未勾选时不显示素材。</p>
       <div id="locationsList" class="locations-list"></div>
-      <button id="addFolderFromPopover" class="menu-action" type="button">+ 添加素材位置</button>
+      <div class="location-actions"><button id="addFolderFromPopover" class="menu-action" type="button">+ 添加素材位置</button><button id="createFolderButton" class="menu-action" type="button">+ 新建文件夹</button></div>
     </div>
 
     <div id="filterPopover" class="popover filter-popover" hidden>
@@ -111,21 +118,28 @@
       </label>
       <label class="field-label">文件格式<input id="extensionFilter" type="text" placeholder="如 mp4, mov, wav" /></label>
       <label class="field-label">色彩标签
-        <select id="labelFilter"><option value="all">不限</option><option value="none">○ 无标签</option><option value="red">🔴 红色</option><option value="orange">🟠 橙色</option><option value="yellow">🟡 黄色</option><option value="green">🟢 绿色</option><option value="blue">🔵 蓝色</option><option value="purple">🟣 紫色</option></select>
+        <select id="labelFilter" class="sr-only"><option value="all">不限</option><option value="none">无标签</option><option value="red">红色</option><option value="orange">橙色</option><option value="yellow">黄色</option><option value="green">绿色</option><option value="blue">蓝色</option><option value="purple">紫色</option></select>
       </label>
+      <div id="labelFilterChoices" class="label-filter-choices" role="group" aria-label="按色彩标签筛选"><button type="button" data-filter-label="all" class="is-active">全部</button><button type="button" data-filter-label="none"><i data-label="none"></i>无</button><button type="button" data-filter-label="red"><i data-label="red"></i>红</button><button type="button" data-filter-label="orange"><i data-label="orange"></i>橙</button><button type="button" data-filter-label="yellow"><i data-label="yellow"></i>黄</button><button type="button" data-filter-label="green"><i data-label="green"></i>绿</button><button type="button" data-filter-label="blue"><i data-label="blue"></i>蓝</button><button type="button" data-filter-label="purple"><i data-label="purple"></i>紫</button></div>
       <label class="field-label">素材位置<select id="rootFilter"><option value="all">全部位置</option></select></label>
       <label class="check-row"><input id="metadataOnlyFilter" type="checkbox" /> 只看已读取元数据的素材</label>
     </div>
 
     <div id="contextMenu" class="context-menu" role="menu" hidden>
-      <button type="button" data-command="play">全屏预览 <span>双击</span></button>
+      <button type="button" data-command="play">打开 <span>双击</span></button>
       <button type="button" data-command="import">导入项目</button>
-      <button id="contextPlaceButton" type="button" data-command="place">放到播放头</button>
+      <div id="insertSubmenuRow" class="submenu-row"><button type="button">插入到 <span>&#8250;</span></button><div class="context-submenu"><button type="button" data-command="insert" data-position="current">当前时间</button><button type="button" data-command="insert" data-position="start">首帧</button><button type="button" data-command="insert" data-position="end">尾帧</button></div></div>
+      <button id="contextAePlaceButton" type="button" data-command="insert" data-position="current" hidden>加入当前合成</button>
       <button class="info-command" type="button" data-command="info">文件信息 <span>悬浮查看</span></button>
+      <button type="button" data-command="pin">置顶</button>
       <button type="button" data-command="favorite">添加到本机收藏</button>
       <div id="transcodeMenu" class="transcode-menu"><span>文件转码</span><div class="transcode-choices"><button type="button" data-command="transcode" data-profile="1080">1080p</button><button type="button" data-command="transcode" data-profile="720">720p</button><button type="button" data-command="transcode" data-profile="360">360p</button></div></div>
       <div class="menu-separator"></div>
       <div class="label-menu"><span>本机色彩标签</span><div id="contextLabelChoices" class="label-choices"></div></div>
+      <button id="copyLabelButton" type="button" data-command="copy-label">复制标签</button>
+      <button id="pasteLabelButton" type="button" data-command="paste-label">粘贴标签</button>
+      <div id="folderSubmenuRow" class="submenu-row"><button type="button">添加到文件夹 <span>&#8250;</span></button><div id="folderSubmenu" class="context-submenu"></div></div>
+      <button type="button" data-command="duplicate">创建副本</button>
       <div class="menu-separator"></div>
       <button type="button" data-command="reveal">在 Finder 中显示</button>
       <button type="button" data-command="rename">重命名</button>
@@ -146,14 +160,34 @@
         <div class="viewer-title"><strong id="viewerTitle"></strong><span id="viewerSubtitle"></span></div>
         <div class="viewer-actions"><button id="closeViewerButton" class="icon-button viewer-close" type="button" aria-label="关闭预览">&#215;</button></div>
       </header>
-      <div id="viewerStage" class="viewer-stage"></div>
-      <div id="viewerBusy" class="viewer-busy" hidden>正在准备预览…</div>
-      <div id="viewerControls" class="viewer-controls" hidden>
-        <input id="viewerScrubber" class="viewer-scrubber" type="range" min="0" max="1000" step="1" value="0" aria-label="播放位置" />
-        <div class="transport-row"><button id="frameBackButton" class="tool-button" type="button" title="后退一帧">|&#9664;</button><button id="playPauseButton" class="tool-button transport-primary" type="button">播放</button><button id="frameForwardButton" class="tool-button" type="button" title="前进一帧">&#9654;|</button><span id="viewerTimecode" class="timecode">00:00:00:00</span><button id="markInButton" class="tool-button" type="button">I 入点</button><button id="markOutButton" class="tool-button" type="button">O 出点</button><button id="loopButton" class="tool-button" type="button" aria-pressed="false">循环 I/O</button></div>
-        <div class="viewer-options"><div class="viewer-option-actions"><label>播放质量 <select id="proxySelect"><option value="source">原画</option><option value="4k">4K</option><option value="1080">1080p</option><option value="720">720p</option><option value="580">580p</option><option value="360">360p</option></select></label><button id="screenshotButton" class="tool-button" type="button">截图入项目</button></div><span id="viewerMarks">I — / O —</span></div>
+      <div id="viewerStage" class="viewer-stage">
+        <div id="viewerMediaLayer" class="viewer-media-layer"></div>
+        <div id="viewerTimeline" class="viewer-timeline">
+          <button id="viewerTimecode" class="viewer-timecode" type="button" title="切换时间码 / 帧数">00:00:00:00</button>
+          <div class="timeline-track-wrap">
+            <input id="viewerScrubber" class="viewer-scrubber" type="range" min="0" max="1000" step="1" value="0" aria-label="播放位置" />
+            <span id="viewerInMark" class="timeline-mark timeline-mark-in" hidden>I</span>
+            <span id="viewerOutMark" class="timeline-mark timeline-mark-out" hidden>O</span>
+          </div>
+          <div class="viewer-transport">
+            <div class="transport-left">
+              <button id="frameBackButton" class="viewer-icon-button" type="button" title="后退一帧" aria-label="后退一帧"><span class="icon-step-back" aria-hidden="true"></span></button>
+              <button id="playPauseButton" class="viewer-icon-button viewer-play-button" type="button" title="播放" aria-label="播放"><span class="icon-play" aria-hidden="true"></span></button>
+              <button id="frameForwardButton" class="viewer-icon-button" type="button" title="前进一帧" aria-label="前进一帧"><span class="icon-step-forward" aria-hidden="true"></span></button>
+              <button id="markInButton" class="viewer-icon-button mark-button" type="button" title="设置入点" aria-label="设置入点">I</button>
+              <button id="markOutButton" class="viewer-icon-button mark-button" type="button" title="设置出点" aria-label="设置出点">O</button>
+              <button id="loopButton" class="viewer-icon-button" type="button" title="循环播放 I/O" aria-label="循环播放入点到出点" aria-pressed="false"><span class="icon-loop" aria-hidden="true"></span></button>
+            </div>
+            <div class="transport-right">
+              <div class="volume-control"><button id="volumeButton" class="viewer-icon-button" type="button" title="音量" aria-label="静音或恢复音量"><span class="icon-volume" aria-hidden="true"></span></button><input id="volumeRange" type="range" min="0" max="1" step="0.05" value="1" aria-label="音量" /></div>
+              <button id="screenshotButton" class="viewer-icon-button" type="button" title="截图入项目" aria-label="截图入项目"><span class="icon-camera" aria-hidden="true"></span></button>
+              <div class="quality-control"><button id="qualityButton" class="viewer-icon-button quality-button" type="button" title="播放质量" aria-label="播放质量" aria-expanded="false">HD</button><div id="viewerQualityMenu" class="quality-menu" hidden><button type="button" data-quality="auto">AUTO</button><button type="button" data-quality="source">SOURCE</button><button type="button" data-quality="4k">4K</button><button type="button" data-quality="1080">1080</button><button type="button" data-quality="720">720</button><button type="button" data-quality="480">480</button><button type="button" data-quality="360">360</button></div></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <footer id="viewerFooter" class="viewer-footer">Esc 返回 · 画面可拖到 Premiere；按住 Alt 拖动只发送音频副本</footer>
+      <div id="viewerBusy" class="viewer-busy" hidden>正在准备预览…</div>
+      <span id="viewerMarks" class="sr-only">I — / O —</span>
     </section>
 
     <section id="lutViewer" class="viewer lut-viewer" hidden aria-label="LUT 预览">
@@ -177,6 +211,9 @@
     <script src="js/timecode.js"></script>
     <script src="js/state-store.js"></script>
     <script src="js/file-ops.js"></script>
+    <script src="js/asset-ops.js"></script>
+    <script src="js/project-packager.js"></script>
+    <script src="js/interaction-tools.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>
