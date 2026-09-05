@@ -1,0 +1,15 @@
+{
+  "name": "rove-adobe-extension",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Rove media browser and ingest bridge for Adobe Premiere Pro and After Effects",
+  "scripts": {
+    "check": "node scripts/check.js && node scripts/version.js check",
+    "test": "node --test tests/*.test.js && npm run check",
+    "version:check": "node scripts/version.js check",
+    "version:set": "node scripts/version.js set"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

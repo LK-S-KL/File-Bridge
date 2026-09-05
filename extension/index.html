@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rove</title>
+    <link rel="stylesheet" href="css/panel.css" />
+  </head>
+  <body>
+    <div class="app-shell" id="appShell">
+      <header class="topbar">
+        <div class="brand" aria-label="Rove">
+          <span class="brand-mark">fn</span>
+          <div class="brand-copy">
+            <strong>Rove</strong>
+            <span id="hostLabel">本地素材桥</span>
+          </div>
+        </div>
+        <button id="refreshButton" class="icon-button" type="button" title="刷新所有素材位置" aria-label="刷新素材">&#8635;</button>
+      </header>
+
+      <section class="location-bar" aria-label="素材位置">
+        <button id="locationsButton" class="path-button" type="button" aria-haspopup="true" aria-expanded="false">
+          <span class="status-dot" id="mountStatus"></span>
+          <span id="rootLabel" class="path-label">正在检查素材位置...</span>
+          <span class="path-chevron">&#9662;</span>
+        </button>
+        <button id="addFolderButton" class="icon-button add-location" type="button" title="添加素材位置" aria-label="添加素材位置">+</button>
+      </section>
+
+      <main class="workspace">
+        <div class="search-row">
+          <label class="search-field">
+            <span class="search-icon" aria-hidden="true"></span>
+            <input id="searchInput" type="search" placeholder="搜索文件名或文件夹" autocomplete="off" />
+            <button id="clearSearchButton" class="clear-search" type="button" title="清除搜索" aria-label="清除搜索">&#215;</button>
+          </label>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="素材工具栏">
+          <button id="favoriteOnlyButton" class="tool-button icon-tool" type="button" title="只看收藏" aria-label="只看收藏" aria-pressed="false">&#9734;</button>
+          <label class="sort-control" title="排序依据">
+            <span class="sr-only">排序依据</span>
+            <select id="sortSelect">
+              <option value="modified">修改日期</option>
+              <option value="name">文件名</option>
+              <option value="size">文件大小</option>
+              <option value="type">文件类型</option>
+              <option value="duration">时长</option>
+            </select>
+          </label>
+          <button id="sortDirectionButton" class="tool-button icon-tool" type="button" title="降序" aria-label="切换升序降序">&#8595;</button>
+          <button id="filterButton" class="tool-button" type="button" aria-haspopup="true" aria-expanded="false">筛选<span id="filterBadge" class="filter-badge" hidden>0</span></button>
+          <label class="zoom-control" title="缩略图大小">
+            <span aria-hidden="true">小</span>
+            <input id="zoomRange" type="range" min="0" max="2" step="1" value="1" aria-label="缩略图大小" />
+            <span aria-hidden="true">大</span>
+          </label>
+          <span id="resultCount" class="result-count">0 项</span>
+        </div>
+
+        <div class="filter-row" role="group" aria-label="素材类型">
+          <button class="filter-button is-active" type="button" data-filter="all">全部</button>
+          <button class="filter-button" type="button" data-filter="video">视频</button>
+          <button class="filter-button" type="button" data-filter="image">图片</button>
+          <button class="filter-button" type="button" data-filter="audio">音频</button>
+        </div>
+
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
+
+        <section id="emptyState" class="empty-state" hidden>
+          <div class="empty-symbol">fn</div>
+          <strong id="emptyTitle">没有找到素材</strong>
+          <p id="emptyMessage">换一个关键词，或添加其他素材位置。</p>
+        </section>
+      </main>
+
+      <aside id="inspector" class="inspector" hidden>
+        <div class="inspector-preview" id="inspectorPreview"></div>
+        <div class="inspector-info">
+          <strong id="selectedName"></strong>
+          <span id="selectedMeta"></span>
+          <span id="selectedPath"></span>
+        </div>
+        <div class="action-row">
+          <button id="importButton" class="button button-secondary" type="button">导入项目</button>
+          <button id="placeButton" class="button button-primary" type="button">放到当前时间</button>
+          <button id="revealButton" class="icon-button action-more" type="button" title="在 Finder 中显示" aria-label="在 Finder 中显示">&#8230;</button>
+        </div>
+      </aside>
+
+      <footer class="statusbar">
+        <span id="statusText">准备就绪</span>
+        <span class="source-mode">SMB 素材</span>
+      </footer>
+    </div>
+
+    <div id="locationsPopover" class="popover locations-popover" hidden>
+      <div class="popover-heading"><strong>素材位置</strong><span>可同时读取多个文件夹</span></div>
+      <div id="locationsList" class="locations-list"></div>
+      <button id="addFolderFromPopover" class="menu-action" type="button">+ 添加素材位置</button>
+    </div>
+
+    <div id="filterPopover" class="popover filter-popover" hidden>
+      <div class="popover-heading"><strong>筛选素材</strong><button id="resetFiltersButton" class="text-button" type="button">重置</button></div>
+      <label class="field-label">文件大小
+        <select id="sizeFilter"><option value="all">不限</option><option value="small">小于 100 MB</option><option value="medium">100 MB–1 GB</option><option value="large">大于 1 GB</option></select>
+      </label>
+      <label class="field-label">文件格式<input id="extensionFilter" type="text" placeholder="如 mp4, mov, wav" /></label>
+      <label class="field-label">色彩标签
+        <select id="labelFilter"><option value="all">不限</option><option value="none">无标签</option><option value="red">红色</option><option value="orange">橙色</option><option value="yellow">黄色</option><option value="green">绿色</option><option value="blue">蓝色</option><option value="purple">紫色</option></select>
+      </label>
+      <label class="field-label">素材位置<select id="rootFilter"><option value="all">全部位置</option></select></label>
+      <label class="check-row"><input id="metadataOnlyFilter" type="checkbox" /> 只看已读取元数据的素材</label>
+    </div>
+
+    <div id="contextMenu" class="context-menu" role="menu" hidden>
+      <button type="button" data-command="play">全屏预览 <span>双击</span></button>
+      <button type="button" data-command="info">文件信息</button>
+      <button type="button" data-command="favorite">添加到本机收藏</button>
+      <div class="menu-separator"></div>
+      <div class="label-menu"><span>本机色彩标签</span><div id="contextLabelChoices" class="label-choices"></div></div>
+      <div class="menu-separator"></div>
+      <button type="button" data-command="reveal">在 Finder 中显示</button>
+      <button type="button" data-command="rename">重命名</button>
+      <button class="danger-command" type="button" data-command="trash">移到废纸篓</button>
+    </div>
+
+    <section id="metadataPanel" class="overlay-panel metadata-panel" hidden aria-label="文件信息">
+      <header class="overlay-header"><div><strong>文件信息</strong><span id="metadataTitle"></span></div><button id="closeMetadataButton" class="icon-button" type="button" aria-label="关闭文件信息">&#215;</button></header>
+      <div id="metadataPreview" class="metadata-preview"></div>
+      <div id="metadataLoading" class="metadata-loading">正在读取媒体元数据...</div>
+      <dl id="metadataList" class="metadata-list"></dl>
+    </section>
+
+    <section id="viewer" class="viewer" hidden aria-label="素材预览">
+      <header class="viewer-header">
+        <div class="viewer-title"><strong id="viewerTitle"></strong><span id="viewerSubtitle"></span></div>
+        <div class="viewer-actions"><button id="viewerInfoButton" class="tool-button" type="button">文件信息</button><button id="closeViewerButton" class="icon-button" type="button" aria-label="关闭预览">&#215;</button></div>
+      </header>
+      <div id="viewerStage" class="viewer-stage"></div>
+      <footer class="viewer-footer">按 Esc 返回素材库</footer>
+    </section>
+
+    <div id="fileActionDialog" class="dialog-backdrop" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+        <header><strong id="dialogTitle"></strong><p id="dialogMessage"></p></header>
+        <label id="renameField" class="field-label" hidden>新文件名<input id="renameInput" type="text" /></label>
+        <div class="dialog-actions"><button id="dialogCancelButton" class="button button-secondary" type="button">取消</button><button id="dialogConfirmButton" class="button button-primary" type="button">确认</button></div>
+      </section>
+    </div>
+
+    <script src="js/CSInterface.js"></script>
+    <script src="js/library.js"></script>
+    <script src="js/media-tools.js"></script>
+    <script src="js/state-store.js"></script>
+    <script src="js/file-ops.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>

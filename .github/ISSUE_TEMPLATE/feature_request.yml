@@ -1,0 +1,26 @@
+name: 功能建议
+description: 说明工作流痛点，而不只是指定实现方式
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: 当前工作流
+      description: 这个需求发生在剪辑流程的哪个环节？
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望结果
+      description: 完成后应当节省什么操作，或解决什么问题？
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收方式
+      description: 用哪些具体步骤可以判断功能已经完成？
+

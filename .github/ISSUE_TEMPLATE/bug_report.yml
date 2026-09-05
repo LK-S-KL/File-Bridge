@@ -1,0 +1,43 @@
+name: 问题报告
+description: 记录可复现的 Rove 问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题现象
+      description: 请说明你看到了什么，以及原本期望发生什么。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+  - type: input
+    id: rove-version
+    attributes:
+      label: Rove 版本
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: adobe-version
+    attributes:
+      label: Adobe 软件与版本
+      placeholder: Premiere Pro 25.0 / macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 日志或补充信息
+      description: 请先删除账号、路径、令牌和其他敏感信息。
+

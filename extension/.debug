@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionList>
+  <Extension Id="com.fnnas.seekbridge.mvp.panel">
+    <HostList>
+      <Host Name="PPRO" Port="9360" />
+      <Host Name="AEFT" Port="9361" />
+    </HostList>
+  </Extension>
+</ExtensionList>
