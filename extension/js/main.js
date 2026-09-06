@@ -434,6 +434,7 @@
     elements.assetGrid.addEventListener("drop", handleLibraryDrop);
 
     elements.contextMenu.addEventListener("click", handleContextCommand);
+    Array.prototype.forEach.call(elements.contextMenu.querySelectorAll(".submenu-row"), bindFloatingSubmenu);
     elements.contextMenu.addEventListener("mouseover", function (event) {
       var item = event.target.closest("button.info-command");
       var asset = assetForId(state.contextId);
@@ -525,6 +526,34 @@
       resizeFrame = requestAnimationFrame(function () { resizeFrame = 0; syncGridZoom(); });
     });
     window.addEventListener("beforeunload", function () { if (preferenceTimer) { clearTimeout(preferenceTimer); persistPreferences(); } });
+  }
+
+  function bindFloatingSubmenu(row) {
+    var submenu = row.querySelector(".context-submenu");
+    var closeTimer = null;
+    if (!submenu) { return; }
+    function show() {
+      var rect;
+      var width;
+      var left;
+      var top;
+      clearTimeout(closeTimer);
+      submenu.classList.add("is-floating");
+      rect = row.getBoundingClientRect();
+      width = submenu.offsetWidth || 168;
+      left = Math.min(window.innerWidth - width - 8, rect.right - 1);
+      top = Math.max(8, Math.min(window.innerHeight - submenu.offsetHeight - 8, rect.top));
+      submenu.style.left = Math.max(8, left) + "px";
+      submenu.style.top = top + "px";
+    }
+    function hide() {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(function () { if (!row.matches(":hover") && !submenu.matches(":hover")) { submenu.classList.remove("is-floating"); } }, 120);
+    }
+    row.addEventListener("mouseenter", show);
+    row.addEventListener("mouseleave", hide);
+    submenu.addEventListener("mouseenter", show);
+    submenu.addEventListener("mouseleave", hide);
   }
 
   function closestCard(target) {
@@ -1542,7 +1571,7 @@
     });
   }
 
-  function closeContextMenu() { elements.contextMenu.hidden = true; hideMetadataHover(); state.contextId = null; }
+  function closeContextMenu() { elements.contextMenu.hidden = true; Array.prototype.forEach.call(elements.contextMenu.querySelectorAll(".context-submenu.is-floating"), function (submenu) { submenu.classList.remove("is-floating"); submenu.style.left = ""; submenu.style.top = ""; }); hideMetadataHover(); state.contextId = null; }
 
   function handleContextCommand(event) {
     var button = event.target.closest("button[data-command]");

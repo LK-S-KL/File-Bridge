@@ -565,6 +565,7 @@ select:focus-visible,
 .submenu-row > button:hover { background: #2d3036; }
 .submenu-row > button:disabled { color: #626870; cursor: default; }
 .context-submenu { position: absolute; z-index: 4; top: -6px; left: calc(100% - 2px); display: none; min-width: 150px; max-height: min(360px, 70vh); overflow-y: auto; padding: 6px; border: 1px solid #4b5058; border-radius: 10px; background: #222429; box-shadow: 0 16px 34px rgba(0,0,0,.5); }
+.context-submenu.is-floating { position: fixed; z-index: 120; top: auto; left: auto; display: grid; min-width: 168px; max-height: min(360px, 70vh); overflow-y: auto; }
 .submenu-row:hover > .context-submenu,
 .submenu-row:focus-within > .context-submenu { display: grid; }
 .context-submenu button { width: 100%; min-height: 29px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: #dce1db; font-size: 10px; text-align: left; cursor: pointer; }
@@ -1248,9 +1249,8 @@ body { background: var(--bg); }
 .asset-grid.is-mini-card .pin-badge { display: none !important; }
 
 /* List mode is an information-dense view, not a second zoomable gallery. */
-.asset-grid.is-list-view .asset-card { grid-template-columns: 96px minmax(0,1fr); grid-template-rows: 55px; gap: 8px; padding: 4px; }
-.asset-grid.is-list-view .asset-card { align-items: center; align-self: stretch; }
-.asset-grid.is-list-view .asset-thumb { width: 96px; height: 55px; align-self: center; margin: 0; }
+.asset-grid.is-list-view .asset-card { grid-template-columns: 96px minmax(0,1fr); grid-template-rows: minmax(0,1fr); gap: 8px; height: 74px; min-height: 74px; align-items: center; align-self: stretch; padding: 4px; }
+.asset-grid.is-list-view .asset-thumb { width: 96px; height: auto; aspect-ratio: 16 / 9; align-self: center; margin: 0; }
 .asset-grid.is-list-view .asset-name { font-size: 10px; line-height: 13px; font-weight: 600; }
 .asset-grid.is-list-view .asset-details { font-size: 7px; line-height: 10px; }
 .asset-grid.is-list-view .asset-type { right: 4px; bottom: 4px; padding: 1px 3px; font-size: 6px; line-height: 8px; }
@@ -1283,11 +1283,11 @@ body { background: var(--bg); }
 .label-choices { gap: 5px; }
 .label-choice { width: 12px; height: 12px; border-radius: 3px; }
 .label-choice.is-selected { outline-width: 1px; }
-.locations-popover.is-page-popover { top: 8px; right: 8px; bottom: 8px; left: 8px; max-height: none; overflow: auto; padding: 16px; }
-.locations-popover.is-page-popover .locations-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-content: start; gap: 6px; }
+.locations-popover.is-page-popover { top: 0; right: 0; bottom: auto; left: 0; height: min(52vh, 460px); max-height: 52vh; overflow: auto; padding: 16px; border-radius: 0 0 14px 14px; }
+.locations-popover.is-page-popover .locations-list { grid-template-columns: 1fr; align-content: start; gap: 6px; }
 .locations-popover.is-page-popover:not([hidden]) { animation: locations-drop 160ms ease-out; transform-origin: top center; }
 .locations-heading-actions { display: flex; align-items: center; gap: 8px; }
-@keyframes locations-drop { from { opacity: 0; transform: translateY(-10px) scaleY(.98); } to { opacity: 1; transform: translateY(0) scaleY(1); } }
+@keyframes locations-drop { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
 
 /* Timeline states are intentionally distinct: green in-point, amber out-point
  * and a quiet highlighted interval when both exist. */
@@ -1323,8 +1323,8 @@ body { background: var(--bg); }
   .filter-row { min-width: 0; }
   .filter-row .result-count { margin-left: auto; }
   .select-all-toggle { width: 23px; height: 23px; flex-basis: 23px; }
-  .asset-grid.is-list-view .asset-card { grid-template-columns: 78px minmax(0,1fr); grid-template-rows: 46px; }
-  .asset-grid.is-list-view .asset-thumb { width: 78px; height: 46px; }
+  .asset-grid.is-list-view .asset-card { grid-template-columns: 78px minmax(0,1fr); grid-template-rows: minmax(0,1fr); height: 62px; min-height: 62px; }
+  .asset-grid.is-list-view .asset-thumb { width: 78px; height: auto; aspect-ratio: 16 / 9; }
 }
 @media (max-width: 350px) {
   .asset-grid:not(.is-list-view) { --card-min: 0px; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
