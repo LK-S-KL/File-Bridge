@@ -86,6 +86,7 @@
   var visualObserver = null;
   var altPressed = false;
   var audioHover = { timer: null, media: null, assetId: null };
+  var selectionPreview = { media: null, assetId: null, token: 0, fallbackRequested: false };
 
   var elements = {};
   var filterTimer = null;
@@ -394,8 +395,9 @@
       if (card) {
         clickedAsset = assetForId(card.getAttribute("data-asset-id"));
         selectAsset(card.getAttribute("data-asset-id"), { toggle: state.selectionMode || event.metaKey || event.ctrlKey, range: event.shiftKey });
-        if (!clickedAsset || clickedAsset.type !== "video") { stopAudioHover(); }
-        if (clickedAsset && clickedAsset.type === "video" && !state.selectionMode && !event.metaKey && !event.ctrlKey && !event.shiftKey) { playSelectionAudio(clickedAsset); }
+        if (!clickedAsset || clickedAsset.type !== "video") { stopAudioHover(); stopSelectedVideoPreview(); }
+        if (clickedAsset && clickedAsset.type === "video" && !state.selectionMode && !event.metaKey && !event.ctrlKey && !event.shiftKey) { playSelectedVideoPreview(clickedAsset); }
+        else if (state.selectionMode || event.metaKey || event.ctrlKey || event.shiftKey) { stopSelectedVideoPreview(); }
       }
     });
     elements.assetGrid.addEventListener("dblclick", function (event) {
@@ -1088,6 +1090,7 @@
     var renderList = state.visibleAssets;
     var selectedVisible = false;
     var visuals = [];
+    stopSelectedVideoPreview();
     renderGeneration += 1;
     previewQueue = [];
     if (visualObserver) { visualObserver.disconnect(); visualObserver = null; }
@@ -1333,18 +1336,94 @@
     }, 180);
   }
 
-  function playSelectionAudio(asset) {
-    var media;
-    if (!asset || asset.offline || !asset.path || typeof Audio !== "function") { return; }
-    stopAudioHover();
-    media = new Audio(SeekLibrary.fileUrl(asset.path));
-    media.preload = "auto";
-    media.volume = .72;
-    audioHover.assetId = asset.domId;
-    audioHover.media = media;
-    media.addEventListener("ended", function () {
-      if (audioHover.media === media) { audioHover.media = null; audioHover.assetId = null; }
+  function stopSelectedVideoPreview() {
+    var media = selectionPreview.media;
+    selectionPreview.token += 1;
+    selectionPreview.media = null;
+    selectionPreview.assetId = null;
+    selectionPreview.fallbackRequested = false;
+    if (!media) { return; }
+    try { media.pause(); media.removeAttribute("src"); media.load(); } catch (error) {}
+    if (media.parentNode) { media.parentNode.classList.remove("is-selection-preview"); media.parentNode.removeChild(media); }
+  }
+
+  function selectedPreviewProfile(asset) {
+    return asset && asset.mediaMetadata && Number(asset.mediaMetadata.height) >= 1800 ? "1080" : "720";
+  }
+
+  function fallbackSelectedVideoPreview(asset, media, token) {
+    var profile;
+    if (token !== selectionPreview.token || media !== selectionPreview.media || selectionPreview.fallbackRequested) { return; }
+    selectionPreview.fallbackRequested = true;
+    if (!mediaTools) {
+      stopSelectedVideoPreview();
+      return;
+    }
+    profile = selectedPreviewProfile(asset);
+    mediaTools.previewProxyFor(asset.path, profile).then(function (filePath) {
+      if (token !== selectionPreview.token || media !== selectionPreview.media) { return; }
+      media.removeAttribute("data-preview-started");
+      media.setAttribute("data-preview-source", "proxy");
+      media.src = SeekLibrary.fileUrl(filePath);
+      media.load();
+      safePlay(media);
+    }).catch(function () {
+      if (token === selectionPreview.token && media === selectionPreview.media) {
+        /* Restore the poster instead of leaving a failed black video layer. */
+        stopSelectedVideoPreview();
+      }
     });
+  }
+
+  function playSelectedVideoPreview(asset) {
+    var card;
+    var thumb;
+    var media;
+    var poster;
+    var token;
+    stopAudioHover();
+    stopSelectedVideoPreview();
+    if (!asset || asset.type !== "video" || asset.offline || !asset.path) { return; }
+    card = findCard(asset.domId);
+    thumb = card && card.querySelector(".asset-thumb");
+    if (!thumb) { return; }
+    media = document.createElement("video");
+    media.className = "selection-preview-video";
+    media.controls = false;
+    media.preload = "auto";
+    media.playsInline = true;
+    media.muted = false;
+    media.volume = .72;
+    media.draggable = false;
+    media.setAttribute("aria-hidden", "true");
+    poster = thumb.querySelector("img.poster-image");
+    if (poster && poster.src) { media.poster = poster.src; }
+    thumb.appendChild(media);
+    thumb.classList.add("is-selection-preview");
+    token = selectionPreview.token;
+    selectionPreview.media = media;
+    selectionPreview.assetId = asset.domId;
+    media.addEventListener("loadedmetadata", function () {
+      if (token !== selectionPreview.token || media !== selectionPreview.media) { return; }
+      try { media.currentTime = 0; } catch (error) {}
+    });
+    media.addEventListener("play", function () {
+      if (token === selectionPreview.token && media === selectionPreview.media) { media.setAttribute("data-preview-started", "true"); }
+    });
+    media.addEventListener("canplay", function () {
+      if (token !== selectionPreview.token || media !== selectionPreview.media || media.getAttribute("data-preview-started") === "true") { return; }
+      safePlay(media);
+    });
+    media.addEventListener("error", function () {
+      if (token !== selectionPreview.token || media !== selectionPreview.media) { return; }
+      if (media.getAttribute("data-preview-source") === "proxy") { stopSelectedVideoPreview(); }
+      else { fallbackSelectedVideoPreview(asset, media, token); }
+    });
+    media.addEventListener("ended", function () {
+      if (token === selectionPreview.token && media === selectionPreview.media) { media.removeAttribute("data-preview-started"); }
+    });
+    media.src = SeekLibrary.fileUrl(asset.path);
+    media.load();
     safePlay(media);
   }
 
@@ -1366,6 +1445,7 @@
     var to;
     var i;
     if (!asset) { return; }
+    if (selectionPreview.assetId && (selectionPreview.assetId !== id || settings.toggle || settings.range || state.selectionMode)) { stopSelectedVideoPreview(); }
     if (settings.range && state.selectionAnchorId) {
       anchorIndex = state.visibleAssets.map(function (item) { return item.domId; }).indexOf(state.selectionAnchorId);
       targetIndex = state.visibleAssets.map(function (item) { return item.domId; }).indexOf(id);
@@ -1790,6 +1870,7 @@
     var waveform;
     var token;
     stopAudioHover();
+    stopSelectedVideoPreview();
     if (!asset) { return; }
     if (asset.offline) { showNotice("素材当前离线；重新连接原 SMB 路径后可恢复预览。", true, 5000); return; }
     if (asset.type === "lut") { openLutViewer(asset); return; }

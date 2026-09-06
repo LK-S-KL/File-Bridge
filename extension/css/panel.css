@@ -238,6 +238,9 @@ select:focus-visible,
 .asset-thumb { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; aspect-ratio: 16 / 9; background: #161817; }
 .asset-thumb img,
 .asset-thumb video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.asset-thumb .selection-preview-video { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #111316; }
+.asset-thumb.is-selection-preview .poster-image,
+.asset-thumb.is-selection-preview .sprite-preview { opacity: 0 !important; }
 .asset-thumb.is-scrubbing .poster-image { opacity: 0; }
 .sprite-preview { position: absolute; inset: 0; background-repeat: no-repeat; background-size: 400% 300%; opacity: 0; }
 .asset-thumb.is-scrubbing .sprite-preview { opacity: 1; }
