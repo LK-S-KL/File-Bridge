@@ -923,7 +923,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.6.0";
+    ns.version = "0.6.1";
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };

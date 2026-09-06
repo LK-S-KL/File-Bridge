@@ -80,8 +80,8 @@ npm run package:internal
 
 脚本会在桌面生成：
 
-- `LK‘s File Bridge 0.6.0 第五版内测.dmg`
-- `LK‘s File Bridge 0.6.0 第五版内测.zip`
+- `LK‘s File Bridge 0.6.1 第五版修复内测.dmg`
+- `LK‘s File Bridge 0.6.1 第五版修复内测.zip`
 
 这是未签名 CEP 内测包。给同事时优先发送 DMG；双击后运行“安装 LK‘s File Bridge.command”，再重启 Adobe 软件。安装脚本会自动开启 CSXS 12 的 PlayerDebugMode，并在覆盖旧版本前保留带时间戳的备份。
 

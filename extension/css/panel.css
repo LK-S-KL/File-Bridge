@@ -515,8 +515,8 @@ select:focus-visible,
 .label-filter-choices i[data-label="blue"] { background: var(--label-blue); }
 .label-filter-choices i[data-label="purple"] { background: var(--label-purple); }
 
-.asset-grid { contain: layout paint; }
-.asset-card { contain: layout paint; min-height: 0; }
+.asset-grid { contain: paint; }
+.asset-card { contain: paint; min-height: auto; }
 .asset-card { content-visibility: auto; contain-intrinsic-size: 150px 112px; }
 .asset-thumb { min-height: 0; }
 .asset-card.is-drop-target { border-color: var(--accent); background: rgba(134,230,109,.17); box-shadow: 0 0 0 2px rgba(134,230,109,.3); }
@@ -1021,6 +1021,7 @@ body { background: var(--bg); }
 .filter-row .result-count { margin-left: auto; }
 .filter-button { flex: 0 0 auto; white-space: nowrap; }
 .asset-grid:not(.is-list-view) { grid-template-columns: repeat(auto-fill,minmax(var(--card-min),1fr)) !important; }
+.asset-grid:not(.is-list-view) { grid-auto-rows: max-content; align-content: start; }
 .asset-grid.is-list-view { grid-auto-rows: 74px; align-content: start; }
 .asset-grid.is-list-view .asset-card { min-height: 74px; }
 .toolbar { display: grid; min-width: 0; grid-template-columns: auto minmax(0,1fr); }
@@ -1086,8 +1087,10 @@ body { background: var(--bg); }
   background: transparent;
 }
 .topbar .brand { display: none; }
-.topbar #refreshButton { position: absolute; top: 7px; right: 88px; width: 25px; height: 25px; flex-basis: 25px; border-radius: 7px; background: rgba(24,25,28,.82); font-size: 15px; }
-.location-bar { padding-right: 45px; }
+.location-bar { display: flex; align-items: center; padding-right: 12px; }
+.location-bar .path-button { width: auto; flex: 1 1 auto; }
+.location-refresh,
+.location-bar .add-location { width: 30px; height: 30px; flex: 0 0 30px; }
 
 /* The selection action strip is intentionally gone. Selection remains visible
  * on the card itself and all actions stay available from the context menu. */
@@ -1190,7 +1193,7 @@ body { background: var(--bg); }
 
 /* Card rendering: remove content-visibility containment because it can leave
  * asynchronously generated posters blank in CEP's older Chromium. */
-.asset-card { content-visibility: visible; contain: layout; }
+.asset-card { content-visibility: visible; contain: paint; min-height: auto; }
 .asset-grid.is-clean-card .asset-copy,
 .asset-grid[data-card-style="clean"] .asset-copy,
 .asset-grid.is-clean-card .favorite-toggle,
@@ -1268,8 +1271,8 @@ body { background: var(--bg); }
 .icon-camera::after { top: 2px; left: 5px; width: 5px; height: 5px; border-width: 1.4px; box-shadow: inset 0 0 0 1px currentColor; }
 
 @media (max-width: 620px) {
-  .topbar #refreshButton { top: 6px; right: 84px; width: 22px; height: 22px; flex-basis: 22px; }
-  .location-bar { padding-right: 39px; }
+  .location-refresh,
+  .location-bar .add-location { width: 28px; height: 28px; flex-basis: 28px; }
   .toolbar-left { gap: 3px; }
   .toolbar-left .tool-button { flex-basis: 29px; width: 29px; }
   .toolbar-right { gap: 7px; }
