@@ -1,0 +1,253 @@
+{
+  "version": "4.2.0",
+  "unit": "px",
+  "scope": "thumbnail",
+  "colors": {
+    "overlay": "transparent",
+    "overlayHover": "transparent",
+    "overlayPressed": "transparent",
+    "overlayBorder": "transparent",
+    "icon": "#f0f5f1",
+    "text": "#f0f5f1",
+    "favoriteSelected": "#84e36c",
+    "pinSelected": "#84e36c",
+    "cardSelected": "#84e36c",
+    "cardBackground": "transparent",
+    "cardBorder": "transparent",
+    "disabledIcon": "#8c9890",
+    "focus": "#f0f5f1",
+    "pinBackground": "transparent",
+    "pinBorder": "transparent",
+    "outline": "#0c110e",
+    "badgeBackground": "#0c110e"
+  },
+  "geometry": {
+    "viewBox": "0 0 24 24",
+    "strokeWidth": 1.75,
+    "cardMinWidth": 160,
+    "cardRadius": 8,
+    "cardPadding": 2,
+    "thumbnailAspectRatio": "16 / 9",
+    "thumbnailRadius": 5,
+    "cornerButton": 32,
+    "cornerIcon": 18,
+    "cornerInset": 4,
+    "cornerRadius": 0,
+    "cornerButtonCompact": 28,
+    "cornerInsetCompact": 4,
+    "badgeHeight": 18,
+    "badgeRadius": 3,
+    "badgePaddingX": 4,
+    "badgeIcon": 0,
+    "badgeGap": 0,
+    "badgeBottomInset": 4,
+    "selectedBorder": 1,
+    "focusWidth": 2,
+    "focusOffset": 2,
+    "pinRotationDegrees": 30,
+    "pinRotationOrigin": [
+      12,
+      12
+    ],
+    "pinRotationBakedIntoSvg": true,
+    "badgeTextAlign": "timecode:start;format:end",
+    "badgeVerticalAlign": "baseline",
+    "footerTextAlign": "left",
+    "footerSymmetricInsets": false,
+    "footerSelectionPlacement": "right",
+    "footerInsetRule": "left = thumbnail image left (card x + 2); reserve right checkbox width + right inset + text gap",
+    "pinVisibleBackplate": false,
+    "pinVisibleBorder": false,
+    "footerHeight": 40,
+    "badgeHeightCompact": 17,
+    "badgePaddingY": 2,
+    "badgeHorizontalInset": 4,
+    "badgeWidthRule": "actual rendered text advance + 8px",
+    "footerLeftReference": "thumbnail-image-left",
+    "footerTextAnchor": "start",
+    "footerLeftInset": 2
+  },
+  "typography": {
+    "timecodeFont": "ui-monospace, Menlo, monospace",
+    "timecodeFontSize": 12,
+    "compactFontSize": 11,
+    "numeric": "tabular-nums",
+    "formatTransform": "uppercase",
+    "maxTimecodeCharacters": 11,
+    "formatFullTextExamples": [
+      "MP4",
+      "MOV",
+      "WEBM",
+      "PNG",
+      "JPG",
+      "GIF"
+    ],
+    "letterSpacing": 0,
+    "timecodeLineHeight": 14,
+    "formatFontSize": 12,
+    "formatLineHeight": 14,
+    "compactLineHeight": 13
+  },
+  "compactPolicy": {
+    "contentWidthBreakpoint": 190,
+    "hideBadgeIcons": true,
+    "keepTimecodeAndFormatText": true,
+    "truncateOnlyUnusuallyLongExtensions": true,
+    "badgeIcons": "never shown at any width",
+    "longTimecodeLayout": "complete HH:MM:SS:FF and WEBM remain on one row at 160px card width",
+    "footerOverflow": "single-line ellipsis for filename and metadata; retain full values; reserve right checkbox space"
+  },
+  "states": {
+    "default": {
+      "background": "transparent",
+      "iconOpacity": 0.86
+    },
+    "hover": {
+      "background": "transparent",
+      "iconOpacity": 1,
+      "selectedIcon": "#8df273"
+    },
+    "selected": {
+      "background": "transparent",
+      "icon": "#84e36c",
+      "filled": true
+    },
+    "disabled": {
+      "background": "transparent",
+      "iconOpacity": 0.45,
+      "interactive": false
+    },
+    "pressed": {
+      "background": "transparent",
+      "icon": "#f0f5f1",
+      "scale": 0.94,
+      "selectedIcon": "#79d063"
+    }
+  },
+  "stateSemantics": {
+    "favorite": "always show outlined star when not favorite; solid star-filled in green #84e36c when favorite",
+    "pin": "only visible when pinned; unpinned default/hover/pressed/disabled hide glyph and outline; pinned uses 30-degree tilted filled pin, including selected-hover/pressed/disabled; no backplate or square border",
+    "card": "green border + right square-check; independent current selection",
+    "pressed": "transient pointer/key down; release restores prior default/selected state",
+    "disabled": "native disabled button inhibits pointer and keyboard actions; favorite-selected and pinned-disabled keep filled glyph; unpinned-disabled stays hidden",
+    "pinFocus": "no hidden focus target when unpinned; pinned focus follows visible glyph geometry",
+    "pinEntry": "pin an unpinned asset from its context menu; retain raw pin.svg for menu use"
+  },
+  "timecodeFormats": [
+    "MM:SS",
+    "HH:MM:SS",
+    "HH:MM:SS:FF"
+  ],
+  "unknownDuration": "omit or --:--; never infer fps",
+  "media": {
+    "durationForStillImages": false,
+    "gifDurationOnlyIfKnown": true
+  },
+  "badges": {
+    "timecode": {
+      "content": "timecode text only; fitted translucent rectangle",
+      "icon": null,
+      "textAlign": "start",
+      "verticalAlign": "baseline",
+      "interactive": false
+    },
+    "format": {
+      "content": "uppercase extension text only; fitted translucent rectangle",
+      "icon": null,
+      "textAlign": "end",
+      "verticalAlign": "baseline",
+      "interactive": false
+    },
+    "background": "#0c110e",
+    "border": "none",
+    "backgroundOpacity": 0.28,
+    "scope": [
+      "timecode",
+      "format"
+    ],
+    "width": "actual rendered text advance + 8px",
+    "rectangle": {
+      "radius": 3,
+      "paddingX": 4,
+      "paddingY": 2,
+      "height": 18,
+      "compactHeight": 17,
+      "imageEdgeInset": 4
+    }
+  },
+  "opacity": {
+    "defaultIcon": 0.86,
+    "selectedIcon": 1,
+    "disabledIcon": 0.45,
+    "text": 0.92,
+    "iconOutline": 0.64,
+    "textOutline": 0.82,
+    "badgeBackground": 0.28
+  },
+  "rendering": {
+    "iconOutline": {
+      "color": "#0c110e",
+      "strokeWidth": 3.1,
+      "opacity": 0.64
+    },
+    "textOutline": {
+      "color": "#0c110e",
+      "strokeWidth": 1.5,
+      "opacity": 0.82
+    },
+    "outlineLayer": "below foreground; no icon backplates; only timecode/format have fitted translucent rectangles; no CSS/font dependencies",
+    "defaultCardBackground": "none",
+    "preserveInvisibleHitTarget": 32,
+    "hitTargetScope": "visible actions only; no hidden unpinned action"
+  },
+  "combinedStates": {
+    "selected-hover": {
+      "background": "transparent",
+      "icon": "#8df273",
+      "iconOpacity": 1,
+      "filled": true,
+      "scale": 1
+    },
+    "selected-pressed": {
+      "background": "transparent",
+      "icon": "#79d063",
+      "iconOpacity": 1,
+      "filled": true,
+      "scale": 0.94
+    },
+    "selected-disabled": {
+      "background": "transparent",
+      "icon": "#8c9890",
+      "iconOpacity": 0.45,
+      "filled": true,
+      "scale": 1,
+      "interactive": false
+    }
+  },
+  "pinVisibility": {
+    "visibleWhen": "pinned === true",
+    "unpinnedStates": [
+      "default",
+      "hover",
+      "pressed",
+      "disabled"
+    ],
+    "unpinnedGlyph": "none",
+    "unpinnedOutline": "none",
+    "unpinnedFocusable": false,
+    "entryAction": "context-menu:pin",
+    "pinnedStates": [
+      "selected",
+      "selected-hover",
+      "selected-pressed",
+      "selected-disabled"
+    ],
+    "rawIconScope": "menus and explicitly rendered glyphs; not a default thumbnail action"
+  },
+  "accentReference": {
+    "file": "../accent-reference.json",
+    "selected": "#84e36c",
+    "hover": "#8df273",
+    "pressed": "#79d063"
+  }
+}

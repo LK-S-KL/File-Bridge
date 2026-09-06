@@ -1,0 +1,2188 @@
+{
+  "version": "4.3.0",
+  "target": "Adobe CEP",
+  "icons": [
+    {
+      "name": "排序",
+      "id": "arrow-down-wide-narrow",
+      "filename": "icons/arrow-down-wide-narrow.svg",
+      "sourceName": "arrow-down-wide-narrow",
+      "usage": "工具栏",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "显示排序选项",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/arrow-down-wide-narrow.svg",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏",
+          "defaultSize": 20,
+          "interaction": "显示排序选项"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/arrow-down-wide-narrow.svg",
+        "20": "sizes/20/arrow-down-wide-narrow.svg",
+        "24": "sizes/24/arrow-down-wide-narrow.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/arrow-down-wide-narrow.svg",
+        "hover": "states/hover/arrow-down-wide-narrow.svg",
+        "selected": "states/selected/arrow-down-wide-narrow.svg",
+        "disabled": "states/disabled/arrow-down-wide-narrow.svg",
+        "pressed": "states/pressed/arrow-down-wide-narrow.svg"
+      }
+    },
+    {
+      "name": "排序方向",
+      "id": "arrow-up-down",
+      "filename": "icons/arrow-up-down.svg",
+      "sourceName": "arrow-up-down",
+      "usage": "排序菜单",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "调整升降序",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/arrow-up-down.svg",
+      "contexts": {
+        "interface": {
+          "usage": "排序菜单",
+          "defaultSize": 18,
+          "interaction": "调整升降序"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/arrow-up-down.svg",
+        "20": "sizes/20/arrow-up-down.svg",
+        "24": "sizes/24/arrow-up-down.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/arrow-up-down.svg",
+        "hover": "states/hover/arrow-up-down.svg",
+        "selected": "states/selected/arrow-up-down.svg",
+        "disabled": "states/disabled/arrow-up-down.svg",
+        "pressed": "states/pressed/arrow-up-down.svg"
+      }
+    },
+    {
+      "name": "check",
+      "id": "check",
+      "filename": "icons/check.svg",
+      "sourceName": "check",
+      "usage": "补充图标",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "按业务调用",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/check.svg",
+      "contexts": {
+        "interface": {
+          "usage": "补充图标",
+          "defaultSize": 20,
+          "interaction": "按业务调用"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/check.svg",
+        "20": "sizes/20/check.svg",
+        "24": "sizes/24/check.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/check.svg",
+        "hover": "states/hover/check.svg",
+        "selected": "states/selected/check.svg",
+        "disabled": "states/disabled/check.svg",
+        "pressed": "states/pressed/check.svg"
+      }
+    },
+    {
+      "name": "下拉操作",
+      "id": "chevron-down",
+      "filename": "icons/chevron-down.svg",
+      "sourceName": "chevron-down",
+      "usage": "排序 / 筛选 / 素材位置菜单",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "展开对应选项；数量文本不带菜单",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/chevron-down.svg",
+      "contexts": {
+        "interface": {
+          "usage": "排序 / 筛选 / 素材位置菜单",
+          "defaultSize": 20,
+          "interaction": "展开对应选项；数量文本不带菜单"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/chevron-down.svg",
+        "20": "sizes/20/chevron-down.svg",
+        "24": "sizes/24/chevron-down.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/chevron-down.svg",
+        "hover": "states/hover/chevron-down.svg",
+        "selected": "states/selected/chevron-down.svg",
+        "disabled": "states/disabled/chevron-down.svg",
+        "pressed": "states/pressed/chevron-down.svg"
+      }
+    },
+    {
+      "name": "完成",
+      "id": "circle-check",
+      "filename": "icons/circle-check.svg",
+      "sourceName": "circle-check",
+      "usage": "状态提示",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "操作完成",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/circle-check.svg",
+      "contexts": {
+        "interface": {
+          "usage": "状态提示",
+          "defaultSize": 20,
+          "interaction": "操作完成"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/circle-check.svg",
+        "20": "sizes/20/circle-check.svg",
+        "24": "sizes/24/circle-check.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/circle-check.svg",
+        "hover": "states/hover/circle-check.svg",
+        "selected": "states/selected/circle-check.svg",
+        "disabled": "states/disabled/circle-check.svg",
+        "pressed": "states/pressed/circle-check.svg"
+      }
+    },
+    {
+      "name": "时间辅助",
+      "id": "clock-3",
+      "filename": "icons/clock-3.svg",
+      "sourceName": "clock-3",
+      "usage": "其他时间相关界面（可选）",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "可选时间标识；不用于缩略图时间码",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/clock-3.svg",
+      "contexts": {
+        "interface": {
+          "usage": "其他时间相关界面（可选）",
+          "defaultSize": 16,
+          "interaction": "可选时间标识；不用于缩略图时间码"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/clock-3.svg",
+        "20": "sizes/20/clock-3.svg",
+        "24": "sizes/24/clock-3.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/clock-3.svg",
+        "hover": "states/hover/clock-3.svg",
+        "selected": "states/selected/clock-3.svg",
+        "disabled": "states/disabled/clock-3.svg",
+        "pressed": "states/pressed/clock-3.svg"
+      }
+    },
+    {
+      "name": "复制",
+      "id": "copy",
+      "filename": "icons/copy.svg",
+      "sourceName": "copy",
+      "usage": "右键菜单",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "复制文件名",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/copy.svg",
+      "contexts": {
+        "interface": {
+          "usage": "右键菜单",
+          "defaultSize": 18,
+          "interaction": "复制文件名"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/copy.svg",
+        "20": "sizes/20/copy.svg",
+        "24": "sizes/24/copy.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/copy.svg",
+        "hover": "states/hover/copy.svg",
+        "selected": "states/selected/copy.svg",
+        "disabled": "states/disabled/copy.svg",
+        "pressed": "states/pressed/copy.svg"
+      }
+    },
+    {
+      "name": "下载",
+      "id": "download",
+      "filename": "icons/download.svg",
+      "sourceName": "download",
+      "usage": "扩展操作",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "导出素材",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/download.svg",
+      "contexts": {
+        "interface": {
+          "usage": "扩展操作",
+          "defaultSize": 18,
+          "interaction": "导出素材"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/download.svg",
+        "20": "sizes/20/download.svg",
+        "24": "sizes/24/download.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/download.svg",
+        "hover": "states/hover/download.svg",
+        "selected": "states/selected/download.svg",
+        "disabled": "states/disabled/download.svg",
+        "pressed": "states/pressed/download.svg"
+      }
+    },
+    {
+      "name": "更多",
+      "id": "ellipsis",
+      "filename": "icons/ellipsis.svg",
+      "sourceName": "ellipsis",
+      "usage": "扩展操作",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "打开更多菜单",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/ellipsis.svg",
+      "contexts": {
+        "interface": {
+          "usage": "扩展操作",
+          "defaultSize": 20,
+          "interaction": "打开更多菜单"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/ellipsis.svg",
+        "20": "sizes/20/ellipsis.svg",
+        "24": "sizes/24/ellipsis.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/ellipsis.svg",
+        "hover": "states/hover/ellipsis.svg",
+        "selected": "states/selected/ellipsis.svg",
+        "disabled": "states/disabled/ellipsis.svg",
+        "pressed": "states/pressed/ellipsis.svg"
+      }
+    },
+    {
+      "name": "文件类型",
+      "id": "file",
+      "filename": "icons/file.svg",
+      "sourceName": "file",
+      "usage": "列表",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "通用格式",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/file.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表",
+          "defaultSize": 16,
+          "interaction": "通用格式"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/file.svg",
+        "20": "sizes/20/file.svg",
+        "24": "sizes/24/file.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/file.svg",
+        "hover": "states/hover/file.svg",
+        "selected": "states/selected/file.svg",
+        "disabled": "states/disabled/file.svg",
+        "pressed": "states/pressed/file.svg"
+      }
+    },
+    {
+      "name": "ZIP文件",
+      "id": "file-archive",
+      "filename": "icons/file-archive.svg",
+      "sourceName": "file-archive",
+      "usage": "打包备选",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "明确ZIP导出时使用",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/file-archive.svg",
+      "contexts": {
+        "interface": {
+          "usage": "打包备选",
+          "defaultSize": 20,
+          "interaction": "明确ZIP导出时使用"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/file-archive.svg",
+        "20": "sizes/20/file-archive.svg",
+        "24": "sizes/24/file-archive.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/file-archive.svg",
+        "hover": "states/hover/file-archive.svg",
+        "selected": "states/selected/file-archive.svg",
+        "disabled": "states/disabled/file-archive.svg",
+        "pressed": "states/pressed/file-archive.svg"
+      }
+    },
+    {
+      "name": "LUT类型",
+      "id": "file-sliders",
+      "filename": "icons/file-sliders.svg",
+      "sourceName": "file-sliders",
+      "usage": "列表",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "静态格式标识",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/file-sliders.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表",
+          "defaultSize": 16,
+          "interaction": "静态格式标识"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/file-sliders.svg",
+        "20": "sizes/20/file-sliders.svg",
+        "24": "sizes/24/file-sliders.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/file-sliders.svg",
+        "hover": "states/hover/file-sliders.svg",
+        "selected": "states/selected/file-sliders.svg",
+        "disabled": "states/disabled/file-sliders.svg",
+        "pressed": "states/pressed/file-sliders.svg"
+      }
+    },
+    {
+      "name": "视频类型",
+      "id": "film",
+      "filename": "icons/film.svg",
+      "sourceName": "film",
+      "usage": "列表/可选元数据",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "静态类型标识；不用于缩略图格式徽标",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/film.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标"
+        },
+        "thumbnail": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标",
+          "selectedGlyph": "film",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/film.svg",
+        "20": "sizes/20/film.svg",
+        "24": "sizes/24/film.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/film.svg",
+        "hover": "states/hover/film.svg",
+        "selected": "states/selected/film.svg",
+        "disabled": "states/disabled/film.svg",
+        "pressed": "states/pressed/film.svg"
+      }
+    },
+    {
+      "name": "素材位置",
+      "id": "folder",
+      "filename": "icons/folder.svg",
+      "sourceName": "folder-cog",
+      "usage": "工具栏右上素材位置",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "展开位置菜单；设置位置进入路径弹窗",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/folder-cog.svg",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏右上素材位置",
+          "defaultSize": 20,
+          "interaction": "展开位置菜单；设置位置进入路径弹窗"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/folder.svg",
+        "20": "sizes/20/folder.svg",
+        "24": "sizes/24/folder.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/folder.svg",
+        "hover": "states/hover/folder.svg",
+        "selected": "states/selected/folder.svg",
+        "disabled": "states/disabled/folder.svg",
+        "pressed": "states/pressed/folder.svg"
+      }
+    },
+    {
+      "name": "选择/打开目录",
+      "id": "folder-open",
+      "filename": "icons/folder-open.svg",
+      "sourceName": "folder-open",
+      "usage": "路径设置/右键菜单",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "调用宿主文件夹选择器或打开所在目录",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/folder-open.svg",
+      "contexts": {
+        "interface": {
+          "usage": "路径设置/右键菜单",
+          "defaultSize": 20,
+          "interaction": "调用宿主文件夹选择器或打开所在目录"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/folder-open.svg",
+        "20": "sizes/20/folder-open.svg",
+        "24": "sizes/24/folder-open.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/folder-open.svg",
+        "hover": "states/hover/folder-open.svg",
+        "selected": "states/selected/folder-open.svg",
+        "disabled": "states/disabled/folder-open.svg",
+        "pressed": "states/pressed/folder-open.svg"
+      }
+    },
+    {
+      "name": "新建文件夹",
+      "id": "folder-plus",
+      "filename": "icons/folder-plus.svg",
+      "sourceName": "folder-plus",
+      "usage": "素材位置菜单",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "新建文件夹；提交到宿主接口",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/folder-plus.svg",
+      "contexts": {
+        "interface": {
+          "usage": "素材位置菜单",
+          "defaultSize": 18,
+          "interaction": "新建文件夹；提交到宿主接口"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/folder-plus.svg",
+        "20": "sizes/20/folder-plus.svg",
+        "24": "sizes/24/folder-plus.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/folder-plus.svg",
+        "hover": "states/hover/folder-plus.svg",
+        "selected": "states/selected/folder-plus.svg",
+        "disabled": "states/disabled/folder-plus.svg",
+        "pressed": "states/pressed/folder-plus.svg"
+      }
+    },
+    {
+      "name": "上传文件夹",
+      "id": "folder-up",
+      "filename": "icons/folder-up.svg",
+      "sourceName": "folder-up",
+      "usage": "素材位置菜单",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "上传文件夹；提交到宿主接口",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/folder-up.svg",
+      "contexts": {
+        "interface": {
+          "usage": "素材位置菜单",
+          "defaultSize": 18,
+          "interaction": "上传文件夹；提交到宿主接口"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/folder-up.svg",
+        "20": "sizes/20/folder-up.svg",
+        "24": "sizes/24/folder-up.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/folder-up.svg",
+        "hover": "states/hover/folder-up.svg",
+        "selected": "states/selected/folder-up.svg",
+        "disabled": "states/disabled/folder-up.svg",
+        "pressed": "states/pressed/folder-up.svg"
+      }
+    },
+    {
+      "name": "筛选",
+      "id": "funnel",
+      "filename": "icons/funnel.svg",
+      "sourceName": "funnel",
+      "usage": "工具栏",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "显示筛选条件",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/funnel.svg",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏",
+          "defaultSize": 20,
+          "interaction": "显示筛选条件"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/funnel.svg",
+        "20": "sizes/20/funnel.svg",
+        "24": "sizes/24/funnel.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/funnel.svg",
+        "hover": "states/hover/funnel.svg",
+        "selected": "states/selected/funnel.svg",
+        "disabled": "states/disabled/funnel.svg",
+        "pressed": "states/pressed/funnel.svg"
+      }
+    },
+    {
+      "name": "图片类型",
+      "id": "image",
+      "filename": "icons/image.svg",
+      "sourceName": "image",
+      "usage": "列表/可选元数据",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "静态类型标识；不用于缩略图格式徽标",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/image.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标"
+        },
+        "thumbnail": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标",
+          "selectedGlyph": "image",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/image.svg",
+        "20": "sizes/20/image.svg",
+        "24": "sizes/24/image.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/image.svg",
+        "hover": "states/hover/image.svg",
+        "selected": "states/selected/image.svg",
+        "disabled": "states/disabled/image.svg",
+        "pressed": "states/pressed/image.svg"
+      }
+    },
+    {
+      "name": "无缩略图",
+      "id": "image-off",
+      "filename": "icons/image-off.svg",
+      "sourceName": "image-off",
+      "usage": "素材卡片",
+      "defaultSize": 24,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "缺失缩略图状态",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/image-off.svg",
+      "contexts": {
+        "interface": {
+          "usage": "素材卡片",
+          "defaultSize": 24,
+          "interaction": "缺失缩略图状态"
+        },
+        "thumbnail": {
+          "usage": "缩略图占位",
+          "defaultSize": 24,
+          "interaction": "实际加载失败时显示",
+          "selectedGlyph": "image-off",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/image-off.svg",
+        "20": "sizes/20/image-off.svg",
+        "24": "sizes/24/image-off.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/image-off.svg",
+        "hover": "states/hover/image-off.svg",
+        "selected": "states/selected/image-off.svg",
+        "disabled": "states/disabled/image-off.svg",
+        "pressed": "states/pressed/image-off.svg"
+      }
+    },
+    {
+      "name": "GIF类型",
+      "id": "image-play",
+      "filename": "icons/image-play.svg",
+      "sourceName": "image-play",
+      "usage": "列表/可选元数据",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "静态类型标识；不用于缩略图格式徽标",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/image-play.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标"
+        },
+        "thumbnail": {
+          "usage": "列表/可选元数据",
+          "defaultSize": 16,
+          "interaction": "静态类型标识；不用于缩略图格式徽标",
+          "selectedGlyph": "image-play",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/image-play.svg",
+        "20": "sizes/20/image-play.svg",
+        "24": "sizes/24/image-play.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/image-play.svg",
+        "hover": "states/hover/image-play.svg",
+        "selected": "states/selected/image-play.svg",
+        "disabled": "states/disabled/image-play.svg",
+        "pressed": "states/pressed/image-play.svg"
+      }
+    },
+    {
+      "name": "卡片模式",
+      "id": "layout-grid",
+      "filename": "icons/layout-grid.svg",
+      "sourceName": "layout-grid",
+      "usage": "右侧视图组",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "卡片模式；与列表和纯净模式互斥",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/layout-grid.svg",
+      "contexts": {
+        "interface": {
+          "usage": "右侧视图组",
+          "defaultSize": 20,
+          "interaction": "卡片模式；与列表和纯净模式互斥"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/layout-grid.svg",
+        "20": "sizes/20/layout-grid.svg",
+        "24": "sizes/24/layout-grid.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/layout-grid.svg",
+        "hover": "states/hover/layout-grid.svg",
+        "selected": "states/selected/layout-grid.svg",
+        "disabled": "states/disabled/layout-grid.svg",
+        "pressed": "states/pressed/layout-grid.svg"
+      }
+    },
+    {
+      "name": "列表模式",
+      "id": "list",
+      "filename": "icons/list.svg",
+      "sourceName": "list",
+      "usage": "右侧视图组",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "列表模式；禁用缩略图大小控制",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/list.svg",
+      "contexts": {
+        "interface": {
+          "usage": "右侧视图组",
+          "defaultSize": 20,
+          "interaction": "列表模式；禁用缩略图大小控制"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/list.svg",
+        "20": "sizes/20/list.svg",
+        "24": "sizes/24/list.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/list.svg",
+        "hover": "states/hover/list.svg",
+        "selected": "states/selected/list.svg",
+        "disabled": "states/disabled/list.svg",
+        "pressed": "states/pressed/list.svg"
+      }
+    },
+    {
+      "name": "全屏",
+      "id": "maximize",
+      "filename": "icons/maximize.svg",
+      "sourceName": "maximize",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "切换播放器全屏",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/maximize.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "切换播放器全屏"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/maximize.svg",
+        "20": "sizes/20/maximize.svg",
+        "24": "sizes/24/maximize.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/maximize.svg",
+        "hover": "states/hover/maximize.svg",
+        "selected": "states/selected/maximize.svg",
+        "disabled": "states/disabled/maximize.svg",
+        "pressed": "states/pressed/maximize.svg"
+      }
+    },
+    {
+      "name": "音频类型",
+      "id": "music-2",
+      "filename": "icons/music-2.svg",
+      "sourceName": "music-2",
+      "usage": "列表",
+      "defaultSize": 16,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "静态格式标识",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/music-2.svg",
+      "contexts": {
+        "interface": {
+          "usage": "列表",
+          "defaultSize": 16,
+          "interaction": "静态格式标识"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/music-2.svg",
+        "20": "sizes/20/music-2.svg",
+        "24": "sizes/24/music-2.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/music-2.svg",
+        "hover": "states/hover/music-2.svg",
+        "selected": "states/selected/music-2.svg",
+        "disabled": "states/disabled/music-2.svg",
+        "pressed": "states/pressed/music-2.svg"
+      }
+    },
+    {
+      "name": "文件打包",
+      "id": "package",
+      "filename": "icons/package.svg",
+      "sourceName": "package",
+      "usage": "选择操作区",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "有选择时显示；仅打包所选素材",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/package.svg",
+      "contexts": {
+        "interface": {
+          "usage": "选择操作区",
+          "defaultSize": 20,
+          "interaction": "有选择时显示；仅打包所选素材"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/package.svg",
+        "20": "sizes/20/package.svg",
+        "24": "sizes/24/package.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/package.svg",
+        "hover": "states/hover/package.svg",
+        "selected": "states/selected/package.svg",
+        "disabled": "states/disabled/package.svg",
+        "pressed": "states/pressed/package.svg"
+      }
+    },
+    {
+      "name": "暂停",
+      "id": "pause",
+      "filename": "icons/pause.svg",
+      "sourceName": "pause",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "暂停播放",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/pause.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "暂停播放"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/pause.svg",
+        "20": "sizes/20/pause.svg",
+        "24": "sizes/24/pause.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/pause.svg",
+        "hover": "states/hover/pause.svg",
+        "selected": "states/selected/pause.svg",
+        "disabled": "states/disabled/pause.svg",
+        "pressed": "states/pressed/pause.svg"
+      }
+    },
+    {
+      "name": "置顶",
+      "id": "pin",
+      "filename": "icons/pin.svg",
+      "sourceName": "pin",
+      "usage": "右键菜单（置顶）",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "菜单中执行置顶；卡片未置顶不显示图钉，置顶后使用pin-filled",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/pin.svg",
+      "rotationDegrees": 30,
+      "rotationOrigin": [
+        12,
+        12
+      ],
+      "rotationBakedIntoSvg": true,
+      "hitArea": 32,
+      "background": "transparent",
+      "border": "none",
+      "selectedGlyph": "pin-filled",
+      "selectedColor": "#84e36c",
+      "contexts": {
+        "interface": {
+          "usage": "右键菜单（置顶）",
+          "defaultSize": 18,
+          "interaction": "菜单中执行置顶；卡片未置顶不显示图钉，置顶后使用pin-filled"
+        },
+        "thumbnail": {
+          "usage": "左上（置顶前隐藏）/右键菜单",
+          "defaultSize": 18,
+          "interaction": "未置顶时隐藏图钉和暗描边，无隐藏焦点；从右键菜单置顶，原始pin.svg仅供菜单；已置顶才显示绿色实心图钉",
+          "selectedGlyph": "pin-filled",
+          "designTokens": "thumbnail/design-tokens.json",
+          "visibility": {
+            "visibleWhen": "pinned === true",
+            "unpinnedStates": [
+              "default",
+              "hover",
+              "pressed",
+              "disabled"
+            ],
+            "unpinnedGlyph": "none",
+            "unpinnedOutline": "none",
+            "unpinnedFocusable": false,
+            "entryAction": "context-menu:pin",
+            "pinnedStates": [
+              "selected",
+              "selected-hover",
+              "selected-pressed",
+              "selected-disabled"
+            ],
+            "rawIconScope": "menus and explicitly rendered glyphs; not a default thumbnail action"
+          },
+          "actionStateFiles": {
+            "default": "thumbnail/components/actions/pin/default.svg",
+            "hover": "thumbnail/components/actions/pin/hover.svg",
+            "selected": "thumbnail/components/actions/pin/selected.svg",
+            "disabled": "thumbnail/components/actions/pin/disabled.svg",
+            "pressed": "thumbnail/components/actions/pin/pressed.svg",
+            "selected-hover": "thumbnail/components/actions/pin/selected-hover.svg",
+            "selected-pressed": "thumbnail/components/actions/pin/selected-pressed.svg",
+            "selected-disabled": "thumbnail/components/actions/pin/selected-disabled.svg"
+          }
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/pin.svg",
+        "20": "sizes/20/pin.svg",
+        "24": "sizes/24/pin.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/pin.svg",
+        "hover": "states/hover/pin.svg",
+        "selected": "states/selected/pin.svg",
+        "disabled": "states/disabled/pin.svg",
+        "pressed": "states/pressed/pin.svg"
+      }
+    },
+    {
+      "name": "置顶（实心）",
+      "id": "pin-filled",
+      "filename": "icons/pin-filled.svg",
+      "sourceName": "pin",
+      "usage": "卡片左上角",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "仅已置顶时显示倾斜30度无底框实心图钉；点击取消；选中+悬停/按下/禁用保留形状",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/pin.svg",
+      "rotationDegrees": 30,
+      "rotationOrigin": [
+        12,
+        12
+      ],
+      "rotationBakedIntoSvg": true,
+      "hitArea": 32,
+      "background": "transparent",
+      "border": "none",
+      "selectedGlyph": "pin-filled",
+      "selectedColor": "#84e36c",
+      "contexts": {
+        "interface": {
+          "usage": "卡片左上角",
+          "defaultSize": 18,
+          "interaction": "仅已置顶时显示倾斜30度无底框实心图钉；点击取消；选中+悬停/按下/禁用保留形状"
+        },
+        "thumbnail": {
+          "usage": "左上",
+          "defaultSize": 18,
+          "interaction": "仅已置顶时显示倾斜30度无底框实心图钉；点击取消；选中+悬停/按下/禁用保留形状",
+          "selectedGlyph": "pin-filled",
+          "designTokens": "thumbnail/design-tokens.json",
+          "visibility": {
+            "visibleWhen": "pinned === true",
+            "unpinnedStates": [
+              "default",
+              "hover",
+              "pressed",
+              "disabled"
+            ],
+            "unpinnedGlyph": "none",
+            "unpinnedOutline": "none",
+            "unpinnedFocusable": false,
+            "entryAction": "context-menu:pin",
+            "pinnedStates": [
+              "selected",
+              "selected-hover",
+              "selected-pressed",
+              "selected-disabled"
+            ],
+            "rawIconScope": "menus and explicitly rendered glyphs; not a default thumbnail action"
+          },
+          "actionStateFiles": {
+            "default": "thumbnail/components/actions/pin/default.svg",
+            "hover": "thumbnail/components/actions/pin/hover.svg",
+            "selected": "thumbnail/components/actions/pin/selected.svg",
+            "disabled": "thumbnail/components/actions/pin/disabled.svg",
+            "pressed": "thumbnail/components/actions/pin/pressed.svg",
+            "selected-hover": "thumbnail/components/actions/pin/selected-hover.svg",
+            "selected-pressed": "thumbnail/components/actions/pin/selected-pressed.svg",
+            "selected-disabled": "thumbnail/components/actions/pin/selected-disabled.svg"
+          }
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/pin-filled.svg",
+        "20": "sizes/20/pin-filled.svg",
+        "24": "sizes/24/pin-filled.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/pin-filled.svg",
+        "hover": "states/hover/pin-filled.svg",
+        "selected": "states/selected/pin-filled.svg",
+        "disabled": "states/disabled/pin-filled.svg",
+        "pressed": "states/pressed/pin-filled.svg"
+      }
+    },
+    {
+      "name": "播放",
+      "id": "play",
+      "filename": "icons/play.svg",
+      "sourceName": "play",
+      "usage": "播放器/右键菜单",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "开始播放",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/play.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器/右键菜单",
+          "defaultSize": 20,
+          "interaction": "开始播放"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/play.svg",
+        "20": "sizes/20/play.svg",
+        "24": "sizes/24/play.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/play.svg",
+        "hover": "states/hover/play.svg",
+        "selected": "states/selected/play.svg",
+        "disabled": "states/disabled/play.svg",
+        "pressed": "states/pressed/play.svg"
+      }
+    },
+    {
+      "name": "纯净模式",
+      "id": "rectangle-horizontal",
+      "filename": "icons/rectangle-horizontal.svg",
+      "sourceName": "rectangle-horizontal",
+      "usage": "右侧视图组",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "纯净模式；与卡片和列表互斥",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/rectangle-horizontal.svg",
+      "contexts": {
+        "interface": {
+          "usage": "右侧视图组",
+          "defaultSize": 20,
+          "interaction": "纯净模式；与卡片和列表互斥"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/rectangle-horizontal.svg",
+        "20": "sizes/20/rectangle-horizontal.svg",
+        "24": "sizes/24/rectangle-horizontal.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/rectangle-horizontal.svg",
+        "hover": "states/hover/rectangle-horizontal.svg",
+        "selected": "states/selected/rectangle-horizontal.svg",
+        "disabled": "states/disabled/rectangle-horizontal.svg",
+        "pressed": "states/pressed/rectangle-horizontal.svg"
+      }
+    },
+    {
+      "name": "循环",
+      "id": "repeat",
+      "filename": "icons/repeat.svg",
+      "sourceName": "repeat",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "循环模式切换",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/repeat.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "循环模式切换"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/repeat.svg",
+        "20": "sizes/20/repeat.svg",
+        "24": "sizes/24/repeat.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/repeat.svg",
+        "hover": "states/hover/repeat.svg",
+        "selected": "states/selected/repeat.svg",
+        "disabled": "states/disabled/repeat.svg",
+        "pressed": "states/pressed/repeat.svg"
+      }
+    },
+    {
+      "id": "scaling",
+      "name": "缩略图大小",
+      "filename": "icons/scaling.svg",
+      "sourceName": "Scaling",
+      "usage": "工具栏右侧视图组旁",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "展开尺寸浮层；列表模式下禁用并保持位置",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://www.npmjs.com/package/lucide/v/1.8.0",
+      "sourcePackage": {
+        "name": "lucide",
+        "version": "1.8.0",
+        "export": "Scaling"
+      },
+      "contexts": {
+        "interface": {
+          "usage": "工具栏右侧视图组旁",
+          "defaultSize": 20,
+          "interaction": "展开尺寸浮层；列表模式下禁用并保持位置"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/scaling.svg",
+        "20": "sizes/20/scaling.svg",
+        "24": "sizes/24/scaling.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/scaling.svg",
+        "hover": "states/hover/scaling.svg",
+        "selected": "states/selected/scaling.svg",
+        "disabled": "states/disabled/scaling.svg",
+        "pressed": "states/pressed/scaling.svg"
+      }
+    },
+    {
+      "name": "搜索",
+      "id": "search",
+      "filename": "icons/search.svg",
+      "sourceName": "search",
+      "usage": "工具栏常驻搜索框",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "输入即时搜索；清空按钮重置查询",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/search.svg",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏常驻搜索框",
+          "defaultSize": 20,
+          "interaction": "输入即时搜索；清空按钮重置查询"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/search.svg",
+        "20": "sizes/20/search.svg",
+        "24": "sizes/24/search.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/search.svg",
+        "hover": "states/hover/search.svg",
+        "selected": "states/selected/search.svg",
+        "disabled": "states/disabled/search.svg",
+        "pressed": "states/pressed/search.svg"
+      }
+    },
+    {
+      "name": "上一项",
+      "id": "skip-back",
+      "filename": "icons/skip-back.svg",
+      "sourceName": "skip-back",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "切换上一素材",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/skip-back.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "切换上一素材"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/skip-back.svg",
+        "20": "sizes/20/skip-back.svg",
+        "24": "sizes/24/skip-back.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/skip-back.svg",
+        "hover": "states/hover/skip-back.svg",
+        "selected": "states/selected/skip-back.svg",
+        "disabled": "states/disabled/skip-back.svg",
+        "pressed": "states/pressed/skip-back.svg"
+      }
+    },
+    {
+      "name": "下一项",
+      "id": "skip-forward",
+      "filename": "icons/skip-forward.svg",
+      "sourceName": "skip-forward",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "切换下一素材",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/skip-forward.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "切换下一素材"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/skip-forward.svg",
+        "20": "sizes/20/skip-forward.svg",
+        "24": "sizes/24/skip-forward.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/skip-forward.svg",
+        "hover": "states/hover/skip-forward.svg",
+        "selected": "states/selected/skip-forward.svg",
+        "disabled": "states/disabled/skip-forward.svg",
+        "pressed": "states/pressed/skip-forward.svg"
+      }
+    },
+    {
+      "name": "未勾选/尺寸端点",
+      "id": "square",
+      "filename": "icons/square.svg",
+      "sourceName": "square",
+      "usage": "复选框/滑块",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "用于未选状态；滑块端点12/18px",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/square.svg",
+      "contexts": {
+        "interface": {
+          "usage": "复选框/滑块",
+          "defaultSize": 20,
+          "interaction": "用于未选状态；滑块端点12/18px"
+        },
+        "thumbnail": {
+          "usage": "卡片页脚",
+          "defaultSize": 20,
+          "interaction": "切换当前素材选择",
+          "selectedGlyph": "square-check",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/square.svg",
+        "20": "sizes/20/square.svg",
+        "24": "sizes/24/square.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/square.svg",
+        "hover": "states/hover/square.svg",
+        "selected": "states/selected/square.svg",
+        "disabled": "states/disabled/square.svg",
+        "pressed": "states/pressed/square.svg"
+      }
+    },
+    {
+      "name": "勾选",
+      "id": "square-check",
+      "filename": "icons/square-check.svg",
+      "sourceName": "square-check",
+      "usage": "下排右侧/卡片",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "表示已选，配合原生checkbox",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/square-check.svg",
+      "contexts": {
+        "interface": {
+          "usage": "下排右侧/卡片",
+          "defaultSize": 20,
+          "interaction": "表示已选，配合原生checkbox"
+        },
+        "thumbnail": {
+          "usage": "卡片页脚",
+          "defaultSize": 20,
+          "interaction": "独立于收藏和置顶",
+          "selectedGlyph": "square-check",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/square-check.svg",
+        "20": "sizes/20/square-check.svg",
+        "24": "sizes/24/square-check.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/square-check.svg",
+        "hover": "states/hover/square-check.svg",
+        "selected": "states/selected/square-check.svg",
+        "disabled": "states/disabled/square-check.svg",
+        "pressed": "states/pressed/square-check.svg"
+      }
+    },
+    {
+      "name": "部分勾选",
+      "id": "square-minus",
+      "filename": "icons/square-minus.svg",
+      "sourceName": "square-minus",
+      "usage": "下排右侧",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "部分项选中；设置indeterminate",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/square-minus.svg",
+      "contexts": {
+        "interface": {
+          "usage": "下排右侧",
+          "defaultSize": 20,
+          "interaction": "部分项选中；设置indeterminate"
+        },
+        "thumbnail": {
+          "usage": "批量选择",
+          "defaultSize": 20,
+          "interaction": "设置原生 indeterminate 属性",
+          "selectedGlyph": "square-minus",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/square-minus.svg",
+        "20": "sizes/20/square-minus.svg",
+        "24": "sizes/24/square-minus.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/square-minus.svg",
+        "hover": "states/hover/square-minus.svg",
+        "selected": "states/selected/square-minus.svg",
+        "disabled": "states/disabled/square-minus.svg",
+        "pressed": "states/pressed/square-minus.svg"
+      }
+    },
+    {
+      "name": "收藏",
+      "id": "star",
+      "filename": "icons/star.svg",
+      "sourceName": "star",
+      "usage": "工具栏 / 缩略图",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "工具栏切换仅看收藏；缩略图按自身收藏状态显示",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/star.svg",
+      "selectedGlyph": "star-filled",
+      "selectedColor": "#84e36c",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏 / 缩略图",
+          "defaultSize": 20,
+          "interaction": "工具栏切换仅看收藏；缩略图按自身收藏状态显示"
+        },
+        "thumbnail": {
+          "usage": "右上",
+          "defaultSize": 18,
+          "interaction": "未收藏时始终显示无底框描边星标；点击后绿色实心",
+          "selectedGlyph": "star-filled",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/star.svg",
+        "20": "sizes/20/star.svg",
+        "24": "sizes/24/star.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/star.svg",
+        "hover": "states/hover/star.svg",
+        "selected": "states/selected/star.svg",
+        "disabled": "states/disabled/star.svg",
+        "pressed": "states/pressed/star.svg"
+      }
+    },
+    {
+      "name": "收藏（实心）",
+      "id": "star-filled",
+      "filename": "icons/star-filled.svg",
+      "sourceName": "star",
+      "usage": "工具栏/素材卡片",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "工具栏切换仅看收藏；卡片未收藏描边，已收藏绿色实心",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/star.svg",
+      "selectedGlyph": "star-filled",
+      "selectedColor": "#84e36c",
+      "contexts": {
+        "interface": {
+          "usage": "工具栏/素材卡片",
+          "defaultSize": 20,
+          "interaction": "工具栏切换仅看收藏；卡片未收藏描边，已收藏绿色实心"
+        },
+        "thumbnail": {
+          "usage": "右上",
+          "defaultSize": 18,
+          "interaction": "绿色实心；点击取消收藏",
+          "selectedGlyph": "star-filled",
+          "designTokens": "thumbnail/design-tokens.json"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/star-filled.svg",
+        "20": "sizes/20/star-filled.svg",
+        "24": "sizes/24/star-filled.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/star-filled.svg",
+        "hover": "states/hover/star-filled.svg",
+        "selected": "states/selected/star-filled.svg",
+        "disabled": "states/disabled/star-filled.svg",
+        "pressed": "states/pressed/star-filled.svg"
+      }
+    },
+    {
+      "name": "移除",
+      "id": "trash-2",
+      "filename": "icons/trash-2.svg",
+      "sourceName": "trash",
+      "usage": "右键菜单",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "交由业务确认和处理",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/trash.svg",
+      "contexts": {
+        "interface": {
+          "usage": "右键菜单",
+          "defaultSize": 18,
+          "interaction": "交由业务确认和处理"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/trash-2.svg",
+        "20": "sizes/20/trash-2.svg",
+        "24": "sizes/24/trash-2.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/trash-2.svg",
+        "hover": "states/hover/trash-2.svg",
+        "selected": "states/selected/trash-2.svg",
+        "disabled": "states/disabled/trash-2.svg",
+        "pressed": "states/pressed/trash-2.svg"
+      }
+    },
+    {
+      "name": "视频",
+      "id": "video",
+      "filename": "icons/video.svg",
+      "sourceName": "video",
+      "usage": "扩展类型",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "视频素材类型",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/video.svg",
+      "contexts": {
+        "interface": {
+          "usage": "扩展类型",
+          "defaultSize": 20,
+          "interaction": "视频素材类型"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/video.svg",
+        "20": "sizes/20/video.svg",
+        "24": "sizes/24/video.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/video.svg",
+        "hover": "states/hover/video.svg",
+        "selected": "states/selected/video.svg",
+        "disabled": "states/disabled/video.svg",
+        "pressed": "states/pressed/video.svg"
+      }
+    },
+    {
+      "name": "音量",
+      "id": "volume",
+      "filename": "icons/volume.svg",
+      "sourceName": "volume-2",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "显示或调整音量",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/volume-2.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "显示或调整音量"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/volume.svg",
+        "20": "sizes/20/volume.svg",
+        "24": "sizes/24/volume.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/volume.svg",
+        "hover": "states/hover/volume.svg",
+        "selected": "states/selected/volume.svg",
+        "disabled": "states/disabled/volume.svg",
+        "pressed": "states/pressed/volume.svg"
+      }
+    },
+    {
+      "name": "静音",
+      "id": "volume-x",
+      "filename": "icons/volume-x.svg",
+      "sourceName": "volume-x",
+      "usage": "播放器",
+      "defaultSize": 20,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "音量为0或静音",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/volume-x.svg",
+      "contexts": {
+        "interface": {
+          "usage": "播放器",
+          "defaultSize": 20,
+          "interaction": "音量为0或静音"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/volume-x.svg",
+        "20": "sizes/20/volume-x.svg",
+        "24": "sizes/24/volume-x.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/volume-x.svg",
+        "hover": "states/hover/volume-x.svg",
+        "selected": "states/selected/volume-x.svg",
+        "disabled": "states/disabled/volume-x.svg",
+        "pressed": "states/pressed/volume-x.svg"
+      }
+    },
+    {
+      "name": "关闭/清空",
+      "id": "x",
+      "filename": "icons/x.svg",
+      "sourceName": "x",
+      "usage": "搜索/弹窗",
+      "defaultSize": 18,
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75,
+      "interaction": "清除查询或关闭弹窗",
+      "sizes": [
+        16,
+        20,
+        24
+      ],
+      "states": [
+        "default",
+        "hover",
+        "selected",
+        "disabled",
+        "pressed"
+      ],
+      "source": "https://raw.githubusercontent.com/lucide-icons/lucide/94e4cb9d9db5907053ebf3636a97c45529cf776b/icons/x.svg",
+      "contexts": {
+        "interface": {
+          "usage": "搜索/弹窗",
+          "defaultSize": 18,
+          "interaction": "清除查询或关闭弹窗"
+        }
+      },
+      "sizeFiles": {
+        "16": "sizes/16/x.svg",
+        "20": "sizes/20/x.svg",
+        "24": "sizes/24/x.svg"
+      },
+      "stateFiles": {
+        "default": "states/default/x.svg",
+        "hover": "states/hover/x.svg",
+        "selected": "states/selected/x.svg",
+        "disabled": "states/disabled/x.svg",
+        "pressed": "states/pressed/x.svg"
+      }
+    }
+  ],
+  "modules": {
+    "thumbnail": {
+      "version": "4.2.0",
+      "name": "缩略图",
+      "icons": "icons/",
+      "designTokens": "thumbnail/design-tokens.json",
+      "iconManifest": "thumbnail/icon-manifest.json",
+      "components": "thumbnail/components/",
+      "preview": "thumbnail/preview-dark.svg",
+      "variant": "clear"
+    },
+    "toolbar": {
+      "version": "4.3.0",
+      "name": "工具栏",
+      "designTokens": "toolbar/design-tokens.json",
+      "components": "toolbar/components/",
+      "preview": "toolbar/previews/overview.svg",
+      "default": "toolbar/components/default.svg",
+      "states": [
+        "default",
+        "filter",
+        "selection"
+      ],
+      "productTitleVisible": false
+    }
+  },
+  "project": "LK File Bridge UI",
+  "thumbnailLayout": {
+    "designTokens": "thumbnail/design-tokens.json",
+    "footerTextAlign": "left",
+    "pinVisibleWhen": "pinned === true",
+    "backplateScope": [
+      "timecode",
+      "format"
+    ]
+  }
+}

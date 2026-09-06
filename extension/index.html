@@ -6,11 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LK‘s File Bridge</title>
     <link rel="stylesheet" href="css/panel.css" />
+    <link rel="stylesheet" href="css/ui-4.3.css" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
       <header class="topbar">
         <span id="hostLabel" class="sr-only">本地素材桥</span>
+        <div class="utility-actions">
+          <button id="locationsToolbarButton" class="utility-source-button" type="button" title="素材位置" data-hint="素材位置" aria-label="打开素材位置" aria-haspopup="true" aria-expanded="false"><span class="icon-folder" aria-hidden="true"></span><span class="utility-source-label">素材位置</span><span class="icon-chevron-down" aria-hidden="true"></span></button>
+        </div>
       </header>
 
       <section class="location-bar" aria-label="素材位置">
@@ -27,21 +31,19 @@
       <main class="workspace">
         <div class="toolbar" role="toolbar" aria-label="素材工具栏">
           <div class="toolbar-left">
-            <button id="searchToggleButton" class="tool-button icon-tool" type="button" title="搜索素材" data-hint="搜索素材" aria-label="搜索素材" aria-expanded="false"><span class="toolbar-magnifier" aria-hidden="true"></span></button>
+            <label id="inlineSearchField" class="search-field toolbar-inline-search" aria-label="搜索素材"><span class="ui-icon" data-icon="search" aria-hidden="true"></span><input id="searchInput" type="search" placeholder="搜索素材…" autocomplete="off" /><button id="clearSearchButton" class="clear-search" type="button" title="清除搜索" aria-label="清除搜索">&#215;</button></label>
             <button id="favoriteOnlyButton" class="tool-button icon-tool" type="button" title="只看收藏" data-hint="只看收藏" aria-label="只看收藏" aria-pressed="false"><span class="icon-star" aria-hidden="true"></span></button>
-            <button id="sortButton" class="tool-button icon-tool" type="button" data-hint="排序" aria-label="排序" aria-haspopup="true" aria-expanded="false"><span class="icon-sort" aria-hidden="true"></span></button>
+            <button id="sortButton" class="tool-button sort-trigger" type="button" data-hint="排序" aria-label="排序" aria-haspopup="true" aria-expanded="false"><span class="icon-sort" aria-hidden="true"></span><span class="sort-current-label">时间</span><span class="icon-chevron-down" aria-hidden="true"></span></button>
             <button id="filterButton" class="tool-button icon-tool" type="button" data-hint="筛选" aria-label="筛选" aria-haspopup="true" aria-expanded="false"><span class="icon-filter" aria-hidden="true"></span><span id="filterBadge" class="filter-badge" hidden>0</span></button>
-            <button id="viewModeButton" class="tool-button icon-tool" type="button" data-hint="切换列表 / 卡片" aria-label="切换列表或卡片模式"><span class="icon-view-grid" aria-hidden="true"></span></button>
-            <button id="cardStyleButton" class="tool-button icon-tool" type="button" data-hint="切换信息卡 / 纯净卡" aria-label="切换信息卡或纯净卡模式" aria-pressed="false"><span class="icon-card-style" aria-hidden="true"></span></button>
-            <label class="zoom-control" title="缩略图大小">
-              <span class="icon-thumb-small" aria-hidden="true"></span>
-              <input id="zoomRange" type="range" min="88" max="260" step="1" value="128" aria-label="缩略图大小" />
-              <span class="icon-thumb-large" aria-hidden="true"></span>
-            </label>
-            <button id="packageProjectButton" class="tool-button icon-tool" type="button" data-hint="打包当前 Premiere 项目实际使用的素材" aria-label="打包当前项目素材"><span class="icon-package" aria-hidden="true"></span></button>
           </div>
           <div class="toolbar-right">
-            <button id="locationsToolbarButton" class="tool-button icon-tool folder-tool" type="button" title="素材位置" data-hint="素材位置" aria-label="打开素材位置" aria-haspopup="true" aria-expanded="false"><span class="icon-folder" aria-hidden="true"></span></button>
+            <button id="viewModeButton" class="tool-button icon-tool" type="button" data-hint="切换列表 / 卡片" aria-label="切换列表或卡片模式"><span class="icon-view-grid" aria-hidden="true"></span></button>
+            <button id="cardStyleButton" class="tool-button icon-tool" type="button" data-hint="切换信息卡 / 纯净卡" aria-label="切换信息卡或纯净卡模式" aria-pressed="false"><span class="icon-card-style" aria-hidden="true"></span></button>
+            <label id="zoomControl" class="zoom-control" title="缩略图大小">
+              <span class="icon-thumb-small" aria-hidden="true"></span>
+              <input id="zoomRange" type="range" min="150" max="260" step="10" value="190" aria-label="缩略图大小" />
+              <span class="icon-thumb-large" aria-hidden="true"></span>
+            </label>
           </div>
         </div>
 
@@ -66,23 +68,35 @@
           <button class="filter-button" type="button" data-filter="audio">音频</button>
           <button class="filter-button" type="button" data-filter="lut">LUT</button>
           <span id="resultCount" class="result-count">0 项</span>
+          <button id="packageProjectButton" class="tool-button package-action" type="button" data-hint="打包当前 Premiere 项目实际使用的素材" aria-label="打包当前项目素材"><span class="icon-package" aria-hidden="true"></span><span>打包</span></button>
+          <button id="clearSelectionButton" class="tool-button clear-selection-action" type="button" title="清除选择" aria-label="清除选择" hidden><span class="ui-icon" data-icon="x" aria-hidden="true"></span></button>
           <button id="resultActionsButton" class="result-actions-button" type="button" aria-label="更多素材操作" aria-haspopup="true" aria-expanded="false">&#9662;</button>
           <button id="selectAllButton" class="select-all-toggle" type="button" data-hint="勾选当前素材" aria-label="勾选当前素材" aria-pressed="false"><span class="icon-select-all" aria-hidden="true"></span></button>
         </div>
 
-        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-        <div id="operationProgress" class="operation-progress" role="status" aria-live="polite" hidden><span id="operationProgressLabel"></span><div><i id="operationProgressBar"></i></div></div>
-        <div id="folderScopeBar" class="folder-scope-bar" hidden>
-          <button id="folderBackButton" class="folder-scope-back" type="button" title="返回上一级" aria-label="返回上一级"><span class="icon-up" aria-hidden="true"></span><span>返回</span></button>
-          <div class="folder-scope-copy"><span>当前文件夹</span><strong id="folderScopeLabel"></strong></div>
-        </div>
-        <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
+        <section class="library-pane" aria-label="素材浏览">
+          <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+          <div id="operationProgress" class="operation-progress" role="status" aria-live="polite" hidden><span id="operationProgressLabel"></span><div><i id="operationProgressBar"></i></div></div>
+          <div id="folderScopeBar" class="folder-scope-bar" hidden>
+            <button id="folderBackButton" class="folder-scope-back" type="button" title="返回上一级" aria-label="返回上一级"><span class="icon-up" aria-hidden="true"></span><span>返回</span></button>
+            <div class="folder-scope-copy"><span>当前文件夹</span><strong id="folderScopeLabel"></strong></div>
+          </div>
+          <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
 
-        <section id="emptyState" class="empty-state" hidden>
-          <div class="empty-symbol">fn</div>
-          <strong id="emptyTitle">没有找到素材</strong>
-          <p id="emptyMessage">换一个关键词，或添加其他素材位置。</p>
+          <section id="emptyState" class="empty-state" hidden>
+            <div class="empty-symbol">fn</div>
+            <strong id="emptyTitle">没有找到素材</strong>
+            <p id="emptyMessage">换一个关键词，或添加其他素材位置。</p>
+          </section>
         </section>
+        <aside id="previewDock" class="preview-dock" hidden aria-label="素材预览和信息">
+          <div class="preview-dock-heading"><strong>预览</strong><button id="previewDockOpenButton" class="icon-button" type="button" title="打开完整预览" aria-label="打开完整预览"><span class="ui-icon" data-icon="maximize" aria-hidden="true"></span></button></div>
+          <div id="previewDockMedia" class="preview-dock-media"><span class="preview-dock-empty">选择素材查看预览</span></div>
+          <div class="preview-dock-title"><strong id="previewDockTitle"></strong><span id="previewDockSubtitle"></span></div>
+          <div class="preview-dock-progress"><i id="previewDockProgress"></i></div>
+          <div class="preview-dock-controls"><button id="previewDockBackButton" class="icon-button" type="button" title="上一素材" aria-label="上一素材"><span class="ui-icon" data-icon="skip-back" aria-hidden="true"></span></button><button id="previewDockPlayButton" class="icon-button preview-dock-play" type="button" title="打开预览" aria-label="打开预览"><span class="ui-icon" data-icon="play" aria-hidden="true"></span></button><button id="previewDockForwardButton" class="icon-button" type="button" title="下一素材" aria-label="下一素材"><span class="ui-icon" data-icon="skip-forward" aria-hidden="true"></span></button><span id="previewDockTime">--:-- / --:--</span><span class="preview-dock-spacer"></span><span class="ui-icon" data-icon="volume" aria-hidden="true"></span></div>
+          <section class="preview-dock-info"><strong>文件信息</strong><dl id="previewDockInfoList"></dl></section>
+        </aside>
       </main>
 
       <span id="statusText" class="sr-only" role="status" aria-live="polite">准备就绪</span>
@@ -90,6 +104,11 @@
 
     <div id="locationsPopover" class="popover locations-popover" hidden>
       <div class="popover-heading"><div class="locations-heading-actions"><button id="locationsBackButton" class="icon-button" type="button" title="返回上一层" aria-label="返回上一层" hidden><span class="icon-up" aria-hidden="true"></span></button><strong>素材位置</strong></div><div class="locations-heading-actions"><button id="toggleAllRootsButton" class="text-button" type="button">全选</button><button id="closeLocationsPopover" class="icon-button" type="button" title="关闭" aria-label="关闭素材位置">&#215;</button></div></div>
+      <div class="source-menu-actions">
+        <button id="openLocationsSettingsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-settings" aria-hidden="true"></span><span>设置素材位置</span></button>
+        <button id="createFolderFromLocationsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-plus" aria-hidden="true"></span><span>新建文件夹</span></button>
+        <button id="uploadFolderFromLocationsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-upload" aria-hidden="true"></span><span>上传文件夹</span></button>
+      </div>
       <p class="popover-hint">勾选一组或多组位置；未勾选时不显示素材。</p>
       <div id="locationsList" class="locations-list"></div>
       <div class="location-actions"><button id="addFolderFromPopover" class="menu-action" type="button">+ 添加素材位置</button></div>
@@ -100,12 +119,7 @@
       <button id="uploadFilesButton" class="menu-action" type="button">上传文件</button>
     </div>
 
-    <div id="toolbarSearchPopover" class="toolbar-search" hidden>
-      <label class="search-field">
-        <input id="searchInput" type="search" placeholder="搜索素材" autocomplete="off" />
-        <button id="clearSearchButton" class="clear-search" type="button" title="清除搜索" aria-label="清除搜索">&#215;</button>
-      </label>
-    </div>
+    <div id="toolbarSearchPopover" class="toolbar-search" hidden></div>
 
     <div id="filterPopover" class="popover filter-popover" hidden>
       <div class="popover-heading"><strong>筛选素材</strong><button id="resetFiltersButton" class="text-button" type="button">重置</button></div>

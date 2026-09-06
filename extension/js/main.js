@@ -100,10 +100,11 @@
   function cacheElements() {
     [
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
-      "selectAllButton", "searchToggleButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton", "locationsToolbarButton",
-      "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomRange", "resultCount", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
+      "selectAllButton", "searchToggleButton", "inlineSearchField", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton", "locationsToolbarButton",
+      "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomControl", "zoomRange", "resultCount", "packageProjectButton", "clearSelectionButton", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage", "previewDock", "previewDockOpenButton", "previewDockMedia", "previewDockTitle", "previewDockSubtitle", "previewDockProgress", "previewDockBackButton", "previewDockPlayButton", "previewDockForwardButton", "previewDockTime", "previewDockInfoList",
       "folderScopeBar", "folderBackButton", "folderScopeLabel",
       "statusText", "locationsPopover", "locationsList", "locationsBackButton", "closeLocationsPopover", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
+      "openLocationsSettingsButton", "createFolderFromLocationsButton", "uploadFolderFromLocationsButton",
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
       "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "clearLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
       "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerMediaLayer", "viewerBusy",
@@ -112,7 +113,7 @@
       "closeLutViewerButton", "lutCanvas", "lutDivider", "lutSplitRange", "lutOpacityRange", "lutCompareToggle", "lutSplitMode", "lutSliderMode", "installLutButton", "lutApplyStatus", "fileActionDialog", "dialogTitle",
       "dialogMessage", "renameField", "renameInput", "dialogCancelButton", "dialogConfirmButton"
     ].forEach(function (id) { elements[id] = byId(id); });
-    elements.searchField = elements.toolbarSearchPopover ? elements.toolbarSearchPopover.querySelector(".search-field") : document.querySelector(".search-field");
+    elements.searchField = elements.inlineSearchField || (elements.toolbarSearchPopover ? elements.toolbarSearchPopover.querySelector(".search-field") : document.querySelector(".search-field"));
     elements.filterButtons = document.querySelectorAll(".filter-button");
   }
 
@@ -296,6 +297,9 @@
     elements.addFolderFromPopover.addEventListener("click", chooseFolder);
     if (elements.locationsBackButton) { elements.locationsBackButton.addEventListener("click", leaveFolderScope); }
     if (elements.closeLocationsPopover) { elements.closeLocationsPopover.addEventListener("click", function () { hidePopover(elements.locationsPopover, elements.locationsToolbarButton || elements.locationsButton); }); }
+    if (elements.openLocationsSettingsButton) { elements.openLocationsSettingsButton.addEventListener("click", function () { if (elements.locationsList) { elements.locationsList.scrollIntoView({ block: "nearest" }); } }); }
+    if (elements.createFolderFromLocationsButton) { elements.createFolderFromLocationsButton.addEventListener("click", function () { hidePopover(elements.locationsPopover, elements.locationsToolbarButton); openCreatePluginFolderDialog(); }); }
+    if (elements.uploadFolderFromLocationsButton) { elements.uploadFolderFromLocationsButton.addEventListener("click", function () { hidePopover(elements.locationsPopover, elements.locationsToolbarButton); chooseExternalFiles(); }); }
     if (elements.folderBackButton) { elements.folderBackButton.addEventListener("click", leaveFolderScope); }
     elements.upFolderButton.addEventListener("click", leaveFolderScope);
     elements.toggleAllRootsButton.addEventListener("click", toggleAllRoots);
@@ -346,6 +350,7 @@
       applyFilters();
     });
     elements.selectAllButton.addEventListener("click", toggleSelectAllAssets);
+    if (elements.clearSelectionButton) { elements.clearSelectionButton.addEventListener("click", clearSelectedAssets); }
     if (elements.resultActionsButton) { elements.resultActionsButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.resultActionsPopover, elements.resultActionsButton); }); }
     elements.sortButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.sortPopover, elements.sortButton); });
     elements.viewModeButton.addEventListener("click", toggleViewMode);
@@ -378,12 +383,18 @@
       readAdvancedFilters();
     });
     elements.resetFiltersButton.addEventListener("click", resetAdvancedFilters);
+    if (Number(state.preferences.zoom) < 150) { state.preferences.zoom = 190; }
     elements.zoomRange.value = String(state.preferences.zoom);
     elements.zoomRange.addEventListener("input", function () {
       state.preferences.zoom = Number(elements.zoomRange.value);
       syncGridZoom();
       schedulePreferencePersist();
     });
+    if (elements.zoomControl) {
+      elements.zoomControl.addEventListener("click", function (event) {
+        if (event.target !== elements.zoomRange && !elements.zoomRange.disabled) { event.preventDefault(); elements.zoomControl.classList.toggle("is-open"); }
+      });
+    }
 
     elements.assetGrid.addEventListener("click", function (event) {
       var card = closestCard(event.target);
@@ -460,6 +471,10 @@
 
     elements.closeMetadataButton.addEventListener("click", closeMetadata);
     elements.closeViewerButton.addEventListener("click", closeViewer);
+    if (elements.previewDockOpenButton) { elements.previewDockOpenButton.addEventListener("click", function () { var asset = selectedAsset(); if (asset) { openViewer(asset); } }); }
+    if (elements.previewDockPlayButton) { elements.previewDockPlayButton.addEventListener("click", function () { var asset = selectedAsset(); if (asset) { openViewer(asset); } }); }
+    if (elements.previewDockBackButton) { elements.previewDockBackButton.addEventListener("click", function () { navigateDockAsset(-1); }); }
+    if (elements.previewDockForwardButton) { elements.previewDockForwardButton.addEventListener("click", function () { navigateDockAsset(1); }); }
     elements.viewerStage.addEventListener("dragstart", startViewerDrag);
     elements.playPauseButton.addEventListener("click", toggleViewerPlayback);
     elements.frameBackButton.addEventListener("click", function () { navigateViewerAsset(-1); });
@@ -497,6 +512,7 @@
       if (!elements.filterPopover.contains(event.target) && event.target !== elements.filterButton) { hidePopover(elements.filterPopover, elements.filterButton); }
       if (elements.resultActionsPopover && !elements.resultActionsPopover.contains(event.target) && event.target !== elements.resultActionsButton) { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); }
       if (elements.toolbarSearchPopover && !elements.toolbarSearchPopover.contains(event.target) && event.target !== elements.searchToggleButton) { hideSearchPopover(); }
+      if (elements.zoomControl && !elements.zoomControl.contains(event.target)) { elements.zoomControl.classList.remove("is-open"); }
       if (!elements.viewerQualityMenu.contains(event.target) && event.target !== elements.qualityButton) { elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false"); }
       if (!elements.contextMenu.contains(event.target)) { closeContextMenu(); }
     });
@@ -966,6 +982,49 @@
   function assetForId(id) { return id ? state.assetById[id] || null : null; }
   function selectedAsset() { return assetForId(state.selectedId); }
 
+  function navigateDockAsset(direction) {
+    var current = selectedAsset();
+    var media = state.visibleAssets.filter(function (asset) { return asset.type === "video" || asset.type === "audio" || asset.type === "image" || asset.type === "lut"; });
+    var index = current ? media.map(function (asset) { return asset.domId; }).indexOf(current.domId) : -1;
+    var next = media[index + direction];
+    if (!next) { return; }
+    selectAsset(next.domId, { only: true });
+    syncPreviewDock();
+  }
+
+  function syncPreviewDock() {
+    var asset = selectedAsset();
+    var card;
+    var poster;
+    var metadata;
+    var rows;
+    if (!elements.previewDock) { return; }
+    if (!asset || asset.type === "plugin-folder" || asset.type === "folder") {
+      elements.previewDock.hidden = true;
+      return;
+    }
+    elements.previewDock.hidden = false;
+    elements.previewDockTitle.textContent = asset.name;
+    elements.previewDockSubtitle.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
+    elements.previewDockMedia.innerHTML = "";
+    card = findCard(asset.domId);
+    poster = card && card.querySelector("img.poster-image");
+    if (poster && poster.src) {
+      var image = document.createElement("img");
+      image.src = poster.src; image.alt = asset.name; image.draggable = false;
+      elements.previewDockMedia.appendChild(image);
+    } else {
+      var placeholder = document.createElement("span");
+      placeholder.className = "preview-dock-empty";
+      placeholder.textContent = asset.type === "audio" ? "波形预览" : asset.type === "lut" ? "LUT 预览" : "正在生成预览";
+      elements.previewDockMedia.appendChild(placeholder);
+    }
+    metadata = asset.mediaMetadata;
+    rows = metadata ? metadataRows(asset, metadata).filter(function (row) { return ["分辨率", "帧率", "文件大小", "文件格式", "时长"].indexOf(row[0]) !== -1; }) : [["文件格式", String(asset.extension || asset.type).toUpperCase()], ["文件大小", SeekLibrary.formatBytes(asset.size)]];
+    elements.previewDockInfoList.innerHTML = "";
+    rows.slice(0, 5).forEach(function (row) { var dt = document.createElement("dt"); var dd = document.createElement("dd"); dt.textContent = row[0]; dd.textContent = row[1]; elements.previewDockInfoList.appendChild(dt); elements.previewDockInfoList.appendChild(dd); });
+  }
+
   function pluginFolderParentId(folder) { return folder ? String(folder.parentId || "") : ""; }
 
   function pluginFolderChildren(folderId) {
@@ -1276,6 +1335,7 @@
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
     if (!selectedVisible && state.selectedId && !state.selectedIds[state.selectedId]) { state.selectedId = null; }
     syncSelectAllButton();
+    syncPreviewDock();
     if (!state.visibleAssets.length) {
       elements.assetGrid.hidden = true;
       if (state.folderScope && state.folderScope.pluginFolderId) {
@@ -1405,6 +1465,7 @@
       return mediaTools.metadataFor(asset.path).then(function (metadata) {
         asset.mediaMetadata = metadata;
         updateCardMediaBadge(asset, thumb);
+        syncPreviewDock();
       }).catch(function () {});
     });
   }
@@ -1419,6 +1480,7 @@
         asset.displayDimensions = image.naturalWidth + " × " + image.naturalHeight;
         updateCardMediaBadge(asset, container);
       }
+      if (state.selectedIds[asset && asset.domId]) { syncPreviewDock(); }
     };
     image.onerror = function () { image.remove(); };
     image.src = source;
@@ -1644,6 +1706,7 @@
       card.classList.toggle("is-selected", selected); card.setAttribute("aria-selected", selected ? "true" : "false");
     });
     syncSelectAllButton();
+    syncPreviewDock();
   }
 
   function syncSelectAllButton() {
@@ -1653,6 +1716,11 @@
     elements.selectAllButton.setAttribute("data-hint", state.selectionMode ? "退出勾选模式" : "进入勾选模式");
     elements.selectAllButton.classList.toggle("is-active", state.selectionMode);
     elements.selectAllButton.title = state.selectionMode ? "退出勾选模式" : "进入勾选模式";
+    var chosen = selectedAssets();
+    var usableChosen = chosen.filter(function (asset) { return asset.type !== "folder" && asset.type !== "plugin-folder"; });
+    if (elements.resultCount) { elements.resultCount.textContent = chosen.length ? chosen.length + " 项已选" : state.visibleAssets.length + " 项"; }
+    if (elements.packageProjectButton) { elements.packageProjectButton.hidden = state.hostId !== "PPRO" || !usableChosen.length; }
+    if (elements.clearSelectionButton) { elements.clearSelectionButton.hidden = !chosen.length; }
   }
 
   function toggleSelectAllAssets() {
@@ -1662,6 +1730,14 @@
       state.selectedId = null;
       state.selectionAnchorId = null;
     }
+    syncSelectAllButton();
+    renderAssets();
+  }
+
+  function clearSelectedAssets() {
+    state.selectedIds = {};
+    state.selectedId = null;
+    state.selectionAnchorId = null;
     syncSelectAllButton();
     renderAssets();
   }
@@ -2109,7 +2185,7 @@
       mediaTools.metadataFor(asset.path).then(function (metadata) {
         if (viewerState.asset !== asset) { return; }
         asset.mediaMetadata = metadata; viewerState.metadata = metadata;
-        updateViewerSubtitle(); updateViewerTimeline();
+        updateViewerSubtitle(); updateViewerTimeline(); syncPreviewDock();
       }).catch(function () {});
     } else { updateViewerSubtitle(); }
   }
@@ -2863,13 +2939,14 @@
   }
   function syncSortDirection() {
     var asc = state.preferences.sortDirection === "asc";
-    elements.sortDirectionButton.textContent = asc ? "↑ 升序" : "↓ 降序"; elements.sortDirectionButton.title = asc ? "升序" : "降序";
+    elements.sortDirectionButton.innerHTML = '<span class="ui-icon" data-icon="arrow-up-down" aria-hidden="true"></span><span>' + (asc ? "升序" : "降序") + '</span>';
+    elements.sortDirectionButton.title = asc ? "升序" : "降序";
   }
   function syncGridZoom() {
-    var size = Math.max(88, Math.min(260, Number(state.preferences.zoom) || 128));
-    var available = elements.assetGrid && elements.assetGrid.clientWidth ? Math.max(88, elements.assetGrid.clientWidth - 4) : size;
+    var size = Math.max(150, Math.min(260, Number(state.preferences.zoom) || 190));
+    var available = elements.assetGrid && elements.assetGrid.clientWidth ? Math.max(150, elements.assetGrid.clientWidth - 4) : size;
     var effectiveSize = Math.min(size, available);
-    var ratio = (size - 88) / 172;
+    var ratio = (size - 150) / 110;
     elements.assetGrid.classList.remove("grid-small", "grid-medium", "grid-large");
     elements.assetGrid.style.setProperty("--card-min", effectiveSize + "px");
     elements.assetGrid.style.setProperty("--badge-font", (6 + ratio * 2).toFixed(2) + "px");

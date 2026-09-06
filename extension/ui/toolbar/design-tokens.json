@@ -1,0 +1,136 @@
+{
+  "version": "4.3.0",
+  "scope": "toolbar",
+  "unit": "px",
+  "inherits": "../design-tokens.json",
+  "colors": {
+    "surface": "#111713",
+    "mainbar": "#181f1a",
+    "border": "#303b33",
+    "searchBackground": "#101612",
+    "searchBorder": "#3a493e",
+    "selected": "#84e36c",
+    "selectedBackground": "#233722",
+    "selectedHover": "#8df273",
+    "selectedPressed": "#79d063",
+    "hoverBackground": "#28312b",
+    "selectedHoverBackground": "#2d4936",
+    "pressedBackground": "#365942"
+  },
+  "geometry": {
+    "referenceWidth": 736,
+    "rootComponentWidth": 1536,
+    "height": 134,
+    "utilityHeight": 40,
+    "browsingY": 40,
+    "browsingHeight": 54,
+    "categoryY": 94,
+    "categoryHeight": 40,
+    "iconSize": 20,
+    "iconViewBox": "0 0 24 24",
+    "iconStrokeWidth": 1.75,
+    "buttonSize": 32,
+    "buttonRadius": 5,
+    "iconGap": 6,
+    "groupGap": 12,
+    "paddingX": 16,
+    "searchX": 16,
+    "searchWidth": 220,
+    "searchHeight": 34,
+    "categoryUnderline": 2,
+    "filterPopoverWidth": 248,
+    "focusWidth": 2,
+    "focusOffset": 3,
+    "wrapBreakpoint": 700
+  },
+  "typography": {
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+    "letterSpacing": 0,
+    "search": {
+      "size": 13,
+      "weight": 400,
+      "lineHeight": 20
+    },
+    "category": {
+      "size": 13,
+      "weight": 500,
+      "lineHeight": 20
+    },
+    "count": {
+      "size": 13,
+      "weight": 400,
+      "lineHeight": 20,
+      "numeric": "tabular-nums"
+    }
+  },
+  "thumbnailSize": {
+    "control": "native-range-in-popover",
+    "min": 150,
+    "max": 260,
+    "step": 10,
+    "default": 190,
+    "disabledIn": "list",
+    "keepDisabledControlSpace": true
+  },
+  "behavior": {
+    "productNameVisible": false,
+    "sourcePlacement": "utility-row-right",
+    "sourceActions": [
+      "set-source-location",
+      "create-folder",
+      "upload-folder"
+    ],
+    "setSourceLocation": "opens-existing-location-dialog",
+    "search": "permanent-live-input; clear resets query; no search popover",
+    "favoriteOnly": "independent-toggle",
+    "sort": "visible-current-field-and-direction",
+    "sortReferenceField": "时间",
+    "filter": "active-condition-count; explicit-clear-in-popover",
+    "views": [
+      "cards",
+      "list",
+      "clean"
+    ],
+    "viewSelection": "exclusive",
+    "categories": [
+      "all",
+      "video",
+      "image",
+      "audio",
+      "lut"
+    ],
+    "categorySelection": "exclusive-green-underline",
+    "resultCount": "read-only-statistic; no-option-menu",
+    "selectionEmpty": "result-count-and-checkbox",
+    "selectionActive": "selected-count-package-clear-and-checkbox",
+    "selectionStates": [
+      "unchecked",
+      "checked",
+      "mixed"
+    ],
+    "selectionScope": "select-all applies to current results; package applies to current selection",
+    "packageVisibleWhen": "selection-count > 0",
+    "packageClearsSelection": false,
+    "clearSelection": "clears-selection-only",
+    "categoriesRemainAvailableDuringSelection": true,
+    "responsive": "at width <= 700 wrap by group; search may use a full row; grow height; no horizontal page overflow",
+    "popover": "Escape and outside click close; restore trigger focus; close peer popovers",
+    "pressed": "transient pointer/key-down; distinct from persistent selected",
+    "runtime": "SVG design source; native DOM controls and CEP business logic implemented by host project",
+    "cepHostVerified": false
+  },
+  "sourceFiles": {
+    "default": "components/default.svg",
+    "selection": "components/selection.svg",
+    "search": "components/search-field.svg",
+    "searchFilled": "components/search-field-filled.svg",
+    "filter": "components/filter-popover.svg",
+    "size": "components/size-popover.svg",
+    "sourceMenu": "components/source-menu.svg",
+    "overview": "previews/overview.svg"
+  },
+  "legacyAliases": {
+    "../components/search-popover.svg": "components/search-field.svg",
+    "../components/search-popover-filled.svg": "components/search-field-filled.svg"
+  }
+}

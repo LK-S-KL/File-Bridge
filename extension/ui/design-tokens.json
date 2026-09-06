@@ -1,0 +1,180 @@
+{
+  "version": "4.3.0",
+  "unit": "px",
+  "colors": {
+    "background": "#111413",
+    "surface": "#1b1f1d",
+    "popover": "#202622",
+    "input": "#151a17",
+    "border": "#303b34",
+    "text": "#e0e6e2",
+    "label": "#a5afa9",
+    "muted": "#87978d",
+    "icon": "#9ba8a0",
+    "hoverIcon": "#e7eee9",
+    "hoverBackground": "#28312b",
+    "selected": "#84e36c",
+    "selectedBackground": "#243b2c",
+    "selectedHoverBackground": "#2d4936",
+    "pressed": "#79d063",
+    "pressedBackground": "#365942",
+    "disabled": "#9ba8a0",
+    "tagBackground": "#18241d",
+    "tagText": "#becdc2",
+    "favorite": "#84e36c",
+    "danger": "#efaaaa",
+    "focus": "#84e36c",
+    "toolbarSurface": "#111713",
+    "toolbarBackground": "#181f1a",
+    "toolbarBorder": "#303b33",
+    "toolbarSelectedBackground": "#233722"
+  },
+  "opacity": {
+    "disabled": 0.38
+  },
+  "icon": {
+    "viewBox": "0 0 24 24",
+    "strokeWidth": 1.75,
+    "linecap": "round",
+    "linejoin": "round",
+    "defaultSize": 20,
+    "sizes": [
+      16,
+      20,
+      24
+    ]
+  },
+  "dimensions": {
+    "button": 32,
+    "buttonRadius": 5,
+    "toolbarRadius": 6,
+    "toolbarMinHeight": 134,
+    "categoryHeight": 40,
+    "categoryMinWidth": 46,
+    "categoryRadius": 0,
+    "searchWidth": 220,
+    "searchInputHeight": 34,
+    "menuWidth": 208,
+    "menuItemHeight": 40,
+    "modalWidth": 520,
+    "inputHeight": 42
+  },
+  "spacing": {
+    "iconGap": 6,
+    "groupGap": 12,
+    "toolbarPaddingX": 16,
+    "toolbarPaddingY": 9,
+    "categoryPaddingX": 18,
+    "inputPaddingX": 12,
+    "menuPadding": 6,
+    "dialogPadding": 24
+  },
+  "typography": {
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+    "letterSpacing": 0,
+    "title": {
+      "size": 16,
+      "weight": 600,
+      "lineHeight": 24
+    },
+    "category": {
+      "size": 13,
+      "weight": 400,
+      "lineHeight": 20,
+      "selectedWeight": 500
+    },
+    "body": {
+      "size": 14,
+      "weight": 400,
+      "lineHeight": 20
+    },
+    "secondary": {
+      "size": 12,
+      "weight": 400,
+      "lineHeight": 18
+    },
+    "badge": {
+      "size": 11,
+      "weight": 500,
+      "lineHeight": 16
+    },
+    "count": {
+      "size": 13,
+      "weight": 400,
+      "lineHeight": 20,
+      "numeric": "tabular-nums"
+    }
+  },
+  "focus": {
+    "width": 2,
+    "offset": 3
+  },
+  "behavior": {
+    "search": "persistent field; live query; clear resets query",
+    "location": "source menu with settings/create-folder/upload-folder; settings opens path dialog",
+    "categories": "exclusive all/video/image/audio/lut; selected underline",
+    "views": "exclusive: list/cards/clean",
+    "actions": [
+      "create-folder",
+      "upload-folder"
+    ],
+    "selection": [
+      "unchecked",
+      "checked",
+      "mixed"
+    ],
+    "pressed": "transient pointer/key-down; distinct from persistent selected",
+    "thumbnailSize": "scaling icon opens150..260 step10 range; default190; disabled in list view",
+    "batch": "show selected count, package and clear only when selection is nonempty; categories stay visible",
+    "productTitleVisible": false
+  },
+  "modules": {
+    "thumbnail": {
+      "version": "4.2.0",
+      "name": "缩略图",
+      "icons": "icons/",
+      "designTokens": "thumbnail/design-tokens.json",
+      "iconManifest": "thumbnail/icon-manifest.json",
+      "components": "thumbnail/components/",
+      "preview": "thumbnail/preview-dark.svg",
+      "variant": "clear"
+    },
+    "toolbar": {
+      "version": "4.3.0",
+      "name": "工具栏",
+      "designTokens": "toolbar/design-tokens.json",
+      "components": "toolbar/components/",
+      "preview": "toolbar/previews/overview.svg",
+      "default": "toolbar/components/default.svg",
+      "states": [
+        "default",
+        "filter",
+        "selection"
+      ],
+      "productTitleVisible": false
+    }
+  },
+  "thumbnailAppearance": {
+    "source": "thumbnail/design-tokens.json",
+    "restingBackplates": true,
+    "restingBackplateScope": "timecode and format only",
+    "cardPadding": 2,
+    "footerHeight": 40,
+    "iconBackplates": false,
+    "badgeBackplates": [
+      "timecode",
+      "format"
+    ],
+    "badgeBackground": "#0c110e",
+    "badgeBackgroundOpacity": 0.28,
+    "footerTextAlign": "left",
+    "footerLeftReference": "thumbnail-image-left",
+    "pinVisibleWhen": "pinned === true"
+  },
+  "accentReference": {
+    "file": "accent-reference.json",
+    "selected": "#84e36c",
+    "hover": "#8df273",
+    "pressed": "#79d063"
+  }
+}
