@@ -32,6 +32,22 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function isRecord(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function validStoredState(state) {
+    return isRecord(state) && state.schemaVersion === 1 && Array.isArray(state.roots) && isRecord(state.assetMeta) &&
+      state.roots.every(function (item) { return isRecord(item) && typeof item.path === "string" && item.path.length > 0; }) &&
+      (!Object.prototype.hasOwnProperty.call(state, "preferences") || isRecord(state.preferences)) &&
+      (!Object.prototype.hasOwnProperty.call(state, "libraryCache") || isRecord(state.libraryCache)) &&
+      (!Object.prototype.hasOwnProperty.call(state, "pluginFolders") || (Array.isArray(state.pluginFolders) && state.pluginFolders.every(function (folder) {
+        return isRecord(folder) && typeof folder.id === "string" && typeof folder.name === "string" && folder.name.length > 0 &&
+          Array.isArray(folder.assetKeys) && folder.assetKeys.every(function (key) { return typeof key === "string"; });
+      }))) &&
+      (!Object.prototype.hasOwnProperty.call(state, "pluginRootAssetKeys") || (Array.isArray(state.pluginRootAssetKeys) && state.pluginRootAssetKeys.every(function (key) { return typeof key === "string"; })));
+  }
+
   function normalize(state) {
     var result = clone(DEFAULT_STATE);
     if (!state || typeof state !== "object") {
@@ -105,7 +121,10 @@
     var os = runtime.os;
     var directory = path.join(os.homedir(), "Library", "Application Support", "fnOS Bridge");
     var statePath = path.join(directory, "state.json");
+    var backupPath = path.join(directory, "state.last-good.json");
     var lockPath = path.join(directory, ".state-write-lock");
+    var serial = 0;
+    var status = { ok: true, writable: true, recovered: false, code: "NEW_STATE", source: "defaults", path: statePath, backupPath: backupPath };
 
     function pause(milliseconds) {
       var start;
@@ -138,39 +157,97 @@
       try { fs.rmdirSync(lockPath); } catch (ignoreReleaseError) {}
     }
 
-    function load() {
+    function readSnapshot(filePath) {
       try {
-        return normalize(JSON.parse(fs.readFileSync(statePath, "utf8")));
+        var contents = fs.readFileSync(filePath, "utf8");
+        var parsed = JSON.parse(contents);
+        if (!validStoredState(parsed)) { throw new Error("INVALID_STATE_SCHEMA"); }
+        return { valid: true, state: normalize(parsed), path: filePath };
       } catch (error) {
-        return clone(DEFAULT_STATE);
+        return { valid: false, missing: error.code === "ENOENT", error: error, path: filePath };
       }
     }
 
-    function save(state) {
-      var temporaryPath;
-      fs.mkdirSync(directory, { recursive: true });
-      temporaryPath = path.join(directory, ".state-" + process.pid + "-" + Date.now() + ".tmp");
-      fs.writeFileSync(temporaryPath, JSON.stringify(normalize(state), null, 2), { encoding: "utf8", mode: 0o600 });
+    function inspect() {
+      var primary = readSnapshot(statePath);
+      var backup = readSnapshot(backupPath);
+      var fresh = primary.missing && backup.missing;
+      status = {
+        ok: primary.valid || fresh,
+        writable: primary.valid || backup.valid || fresh,
+        recovered: !primary.valid && backup.valid,
+        code: primary.valid ? "OK" : (backup.valid ? "STATE_RECOVERED" : (fresh ? "NEW_STATE" : "STATE_RECOVERY_REQUIRED")),
+        source: primary.valid ? "primary" : (backup.valid ? "backup" : "defaults"),
+        path: statePath,
+        backupPath: backupPath,
+        message: primary.valid || fresh ? "" : (backup.valid ? "本地配置损坏，已读取最近有效备份。" : "本地配置与备份无法读取，已暂停保存。原文件已保留，请恢复有效备份。")
+      };
+      return { primary: primary, backup: backup, state: clone(primary.valid ? primary.state : (backup.valid ? backup.state : DEFAULT_STATE)) };
+    }
+
+    function load() { return inspect().state; }
+
+    function atomicWrite(filePath, state) {
+      serial += 1;
+      var temporaryPath = path.join(directory, ".state-" + process.pid + "-" + Date.now() + "-" + serial + ".tmp");
       try {
-        fs.chmodSync(temporaryPath, 0o600);
-      } catch (ignoreModeError) {}
-      fs.renameSync(temporaryPath, statePath);
-      return normalize(state);
+        fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" });
+        fs.renameSync(temporaryPath, filePath);
+      } finally {
+        try { fs.unlinkSync(temporaryPath); } catch (ignoreMissingTemporary) {}
+      }
+    }
+
+    function preserveInvalid(snapshot) {
+      if (snapshot.valid || snapshot.missing) { return; }
+      serial += 1;
+      var preservedPath = snapshot.path + ".corrupt-" + Date.now() + "-" + process.pid + "-" + serial;
+      fs.copyFileSync(snapshot.path, preservedPath, fs.constants.COPYFILE_EXCL);
+    }
+
+    function assertWritable() {
+      if (status.writable) { return; }
+      var error = new Error(status.message);
+      error.code = "STATE_RECOVERY_REQUIRED";
+      error.status = clone(status);
+      throw error;
+    }
+
+    function persist(state, snapshots) {
+      var normalized = normalize(state);
+      assertWritable();
+      preserveInvalid(snapshots.primary);
+      preserveInvalid(snapshots.backup);
+      // Keep a validated prior state before replacing the primary file.
+      if (snapshots.primary.valid) { atomicWrite(backupPath, snapshots.primary.state); }
+      else if (!snapshots.backup.valid) { atomicWrite(backupPath, normalized); }
+      atomicWrite(statePath, normalized);
+      inspect();
+      return normalized;
+    }
+
+    function save(state) {
+      acquireLock();
+      try { return persist(state, inspect()); }
+      finally { releaseLock(); }
     }
 
     function mutate(mutator) {
-      var latest;
+      var snapshots;
       acquireLock();
       try {
-        latest = load();
-        mutator(latest);
-        return save(latest);
+        snapshots = inspect();
+        assertWritable();
+        mutator(snapshots.state);
+        return persist(snapshots.state, snapshots);
       } finally { releaseLock(); }
     }
 
     return {
       path: statePath,
+      backupPath: backupPath,
       lockPath: lockPath,
+      getStatus: function () { return clone(status); },
       load: load,
       save: save,
       mutate: mutate

@@ -53,7 +53,7 @@
 
 .timeline-track-wrap {
   --viewer-progress: 0%;
-  --viewer-buffered: 0%;
+  --viewer-buffered-end: 0%;
   position: relative;
   height: 24px;
   align-self: center;
@@ -64,7 +64,7 @@
   z-index: 1;
   top: 10px;
   left: 0;
-  width: var(--viewer-buffered);
+  width: var(--viewer-buffered-end);
   height: 3px;
   border-radius: 99px;
   background: var(--player-buffered);
@@ -88,7 +88,7 @@
 .viewer-scrubber::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 99px;
-  background: linear-gradient(to right, var(--player-accent) 0%, var(--player-accent) var(--viewer-progress), var(--player-buffered) var(--viewer-progress), var(--player-buffered) var(--viewer-buffered), var(--player-track) var(--viewer-buffered), var(--player-track) 100%);
+  background: linear-gradient(to right, var(--player-accent) 0%, var(--player-accent) var(--viewer-progress), var(--player-buffered) var(--viewer-progress), var(--player-buffered) var(--viewer-buffered-end), var(--player-track) var(--viewer-buffered-end), var(--player-track) 100%);
 }
 
 .viewer-scrubber::-webkit-slider-thumb {
@@ -224,6 +224,11 @@
 .viewer-icon-button .icon-chevron-down { width: 12px; height: 12px; margin-left: 5px; -webkit-mask-image: url("../ui/player/icons/chevron-down.svg"); mask-image: url("../ui/player/icons/chevron-down.svg"); }
 
 .volume-control input {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
   width: 88px;
   height: 24px;
   margin: 0;
@@ -256,6 +261,9 @@
 
 .quality-button,
 .speed-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: auto;
   min-width: 0;
   justify-content: flex-start;
@@ -330,3 +338,13 @@
   .transport-right { width: 312px; }
   .quality-button { width: 82px; }
 }
+
+@media (max-width: 350px) {
+  .transport-right { width: 100%; gap: 4px; }
+  .volume-control { gap: 4px; }
+  .volume-control input { width: 42px; }
+  .quality-button { width: 70px; flex-basis: 70px; }
+}
+
+.viewer-scrubber, .viewer-scrubber::-webkit-slider-thumb { -webkit-appearance: none; }
+.viewer-icon-button.is-active, .viewer-icon-button.is-muted { color: var(--player-accent); border-color: transparent; }

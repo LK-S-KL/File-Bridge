@@ -64,9 +64,73 @@ test("recovers safely from a corrupt state file", () => {
     const loaded = store.load();
     assert.deepEqual(loaded.roots, []);
     assert.deepEqual(loaded.assetMeta, {});
+    assert.equal(store.getStatus().writable, false);
+    assert.equal(store.getStatus().code, "STATE_RECOVERY_REQUIRED");
+    assert.throws(() => store.mutate((state) => { state.assetMeta.new = { favorite: true }; }), { code: "STATE_RECOVERY_REQUIRED" });
+    assert.throws(() => store.save(stateStoreModule.defaults()), { code: "STATE_RECOVERY_REQUIRED" });
+    assert.equal(fs.readFileSync(store.path, "utf8"), "not json");
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
+});
+
+test("restores a validated last-good backup without losing the corrupt original", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-state-backup-"));
+  const store = stateStoreModule.create({ fs, path, os: { homedir: () => fixture } });
+  try {
+    const initial = stateStoreModule.defaults();
+    initial.assetMeta.keep = { favorite: true };
+    initial.pluginFolders.push({ id: "folder", name: "Keep", parentId: "", assetKeys: ["keep"] });
+    store.save(initial);
+    store.mutate((state) => { state.assetMeta.later = { label: "blue" }; });
+    assert.equal(JSON.parse(fs.readFileSync(store.backupPath, "utf8")).assetMeta.later, undefined, "backup must precede mutation");
+    fs.writeFileSync(store.path, "{truncated primary");
+    assert.deepEqual(store.load().assetMeta, initial.assetMeta);
+    assert.equal(store.getStatus().recovered, true);
+    const recovered = store.mutate((state) => { state.assetMeta.next = { label: "green" }; });
+    assert.equal(recovered.pluginFolders[0].assetKeys[0], "keep");
+    assert.equal(recovered.assetMeta.keep.favorite, true);
+    const preserved = fs.readdirSync(path.dirname(store.path)).filter((name) => name.startsWith("state.json.corrupt-"));
+    assert.equal(preserved.length, 1);
+    assert.equal(fs.readFileSync(path.join(path.dirname(store.path), preserved[0]), "utf8"), "{truncated primary");
+    assert.equal(store.getStatus().writable, true);
+  } finally { fs.rmSync(fixture, { recursive: true, force: true }); }
+});
+
+test("rejects valid JSON with an invalid state schema and preserves both failed copies", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-state-invalid-"));
+  const store = stateStoreModule.create({ fs, path, os: { homedir: () => fixture } });
+  try {
+    store.save(stateStoreModule.defaults());
+    fs.writeFileSync(store.path, "{}");
+    fs.writeFileSync(store.backupPath, "[]");
+    store.load();
+    let called = false;
+    assert.throws(() => store.mutate(() => { called = true; }), { code: "STATE_RECOVERY_REQUIRED" });
+    assert.equal(called, false);
+    assert.equal(fs.readFileSync(store.path, "utf8"), "{}");
+    assert.equal(fs.readFileSync(store.backupPath, "utf8"), "[]");
+  } finally { fs.rmSync(fixture, { recursive: true, force: true }); }
+});
+
+test("a failed atomic primary replacement leaves valid primary and backup and removes temporary files", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-state-write-failure-"));
+  const wrappedFs = Object.create(fs);
+  const store = stateStoreModule.create({ fs: wrappedFs, path, os: { homedir: () => fixture } });
+  try {
+    const initial = stateStoreModule.defaults();
+    initial.assetMeta.keep = { favorite: true };
+    store.save(initial);
+    wrappedFs.renameSync = (source, target) => {
+      if (target === store.path) { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); }
+      return fs.renameSync(source, target);
+    };
+    assert.throws(() => store.mutate((state) => { state.assetMeta.bad = { label: "blue" }; }), { code: "ENOSPC" });
+    assert.deepEqual(store.load().assetMeta, initial.assetMeta);
+    assert.deepEqual(JSON.parse(fs.readFileSync(store.backupPath, "utf8")).assetMeta, initial.assetMeta);
+    assert.equal(fs.readdirSync(path.dirname(store.path)).some((name) => name.endsWith(".tmp")), false);
+    assert.equal(fs.existsSync(store.lockPath), false);
+  } finally { fs.rmSync(fixture, { recursive: true, force: true }); }
 });
 
 test("serializes concurrent Premiere and After Effects style metadata writes", async () => {

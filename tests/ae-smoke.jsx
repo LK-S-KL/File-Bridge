@@ -1,38 +1,43 @@
+/* Run only with no open AE project. An existing project is never closed. */
 (function () {
-    var resultFile = new File("/tmp/rove-ae-smoke.json");
-    var hostFile = new File("/Users/lk/Codex/Seek Bridge MVP/extension/jsx/host.jsx");
-    var mediaPath = "/Volumes/团队文件-剪辑共享/0813-MIniMax/MiniMax-H3.MP4";
-    var payload;
-    var importResult;
-    var placeResult;
-    var comp;
+    var TEST_PROJECT_MARKER = "LKFB_AE_SMOKE_" + new Date().getTime();
+    var testProject = null;
+    var marker = null;
+    var scriptFile = new File($.fileName);
+    var hostFile = new File(scriptFile.parent.parent.fsName + "/extension/jsx/host.jsx");
+    var resultFile = new File(Folder.temp.fsName + "/" + TEST_PROJECT_MARKER + ".json");
     var output;
-
+    var projectFile;
+    var comp;
     try {
+        if (app.project) { throw new Error("SMOKE_REFUSED: close your current AE project manually before running this isolated test."); }
+        app.newProject();
+        testProject = app.project;
+        if (!testProject) { throw new Error("SMOKE_PROJECT_FAILED"); }
+        marker = testProject.items.addFolder(TEST_PROJECT_MARKER);
+        marker.comment = TEST_PROJECT_MARKER;
         $.evalFile(hostFile);
-        payload = "{\"path\":" + SeekBridgeTestQuote(mediaPath) + "}";
-        importResult = SeekBridge.importMedia(payload);
-        comp = app.project.items.addComp("Rove Smoke Test", 1920, 1080, 1, 10, 25);
-        comp.openInViewer();
-        comp.time = 2;
-        placeResult = SeekBridge.importMediaToComp(payload);
-        output = "{\"importResult\":" + importResult + ",\"placeResult\":" + placeResult + ",\"numItems\":" + app.project.numItems + ",\"numLayers\":" + comp.numLayers + "}";
+        comp = testProject.items.addComp(TEST_PROJECT_MARKER, 320, 180, 1, 1, 25);
+        comp.parentFolder = marker;
+        output = "{\"ok\":true,\"marker\":" + quote(TEST_PROJECT_MARKER) + ",\"hostVersion\":" + quote($.global.SeekBridge.version) + ",\"numItems\":" + testProject.numItems + "}";
     } catch (error) {
-        output = "{\"harnessError\":" + SeekBridgeTestQuote(error.message || String(error)) + "}";
-    }
-
-    if (resultFile.open("w")) {
+        output = "{\"ok\":false,\"harnessError\":" + quote(error.message || String(error)) + "}";
+    } finally {
+        /* Save even the test project before closing; identity must still match. */
+        if (testProject && app.project === testProject && marker && marker.comment === TEST_PROJECT_MARKER) {
+            try {
+                projectFile = new File(Folder.temp.fsName + "/" + TEST_PROJECT_MARKER + ".aep");
+                testProject.save(projectFile);
+                if (testProject.file && testProject.file.fsName === projectFile.fsName) { testProject.close(CloseOptions.SAVE_CHANGES); }
+            } catch (cleanupError) {
+                output = "{\"ok\":false,\"harnessError\":" + quote(cleanupError.message || String(cleanupError)) + ",\"testProjectLeftOpen\":true}";
+            }
+        }
         resultFile.encoding = "UTF-8";
-        resultFile.write(output);
-        resultFile.close();
+        if (resultFile.open("w")) { resultFile.write(output); resultFile.close(); }
     }
 
-    if (app.project) {
-        app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
-    }
-    app.quit();
-
-    function SeekBridgeTestQuote(value) {
+    function quote(value) {
         return "\"" + String(value).replace(/\\/g, "\\\\").replace(/\"/g, "\\\"").replace(/\r/g, "\\r").replace(/\n/g, "\\n") + "\"";
     }
 }());

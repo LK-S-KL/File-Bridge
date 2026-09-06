@@ -147,7 +147,7 @@
     function mkdirSingle(value) {
       return callbackPromise(function (done) {
         fs.mkdir(value, function (error) {
-          if (error && error.code !== "EEXIST") { done(error); } else { done(null); }
+          if (error && error.code !== "EEXIST") { done(error); } else { done(null, !error); }
         });
       });
     }
@@ -350,13 +350,19 @@
       });
     }
 
-    function ensureDestination(destination) {
+    function ensureDestination(destination, created) {
       var destinationPath;
+      var existed = false;
       if (typeof destination !== "string" || !path.isAbsolute(destination) || destination.indexOf("\u0000") !== -1) {
         return Promise.reject(codedError("INVALID_DESTINATION", "请选择一个有效的绝对路径作为打包位置。"));
       }
       destinationPath = path.resolve(destination);
-      return mkdir(destinationPath).then(function () {
+      return lstat(destinationPath).then(function () { existed = true; }, function (error) {
+        if (!error || error.code !== "ENOENT") { throw error; }
+      }).then(function () { return mkdir(destinationPath); }).then(function () {
+        if (!existed) { return lstat(destinationPath).then(function (entryStat) { created.push({ path: destinationPath, stat: entryStat, directory: true }); }); }
+        return null;
+      }).then(function () {
         return realpath(destinationPath);
       }).then(function (destinationRealPath) {
         var manifestPath = path.join(destinationPath, MANIFEST_FILENAME);
@@ -369,7 +375,7 @@
       });
     }
 
-    function ensureSafeParent(destinationState, targetPath) {
+    function ensureSafeParent(destinationState, targetPath, created) {
       var parentPath = path.dirname(targetPath);
       var relativeParent;
       var segments;
@@ -394,10 +400,12 @@
             return null;
           }, function (error) {
             if (!error || error.code !== "ENOENT") { throw error; }
-            return mkdirSingle(currentPath).then(function () { return lstat(currentPath); }).then(function (entryStat) {
+            var wasCreated = false;
+            return mkdirSingle(currentPath).then(function (made) { wasCreated = made; return lstat(currentPath); }).then(function (entryStat) {
               if (entryStat.isSymbolicLink() || !entryStat.isDirectory()) {
                 throw codedError("DESTINATION_SYMLINK_ESCAPE", "打包目录不安全，已停止写入。");
               }
+              if (wasCreated) { created.push({ path: currentPath, stat: entryStat, directory: true }); }
               return null;
             });
           });
@@ -411,7 +419,7 @@
       });
     }
 
-    function copyWithProgress(source, destination, sourceStat, progress, options) {
+    function copyWithProgress(source, destination, sourceStat, progress, options, created) {
       return new Promise(function (resolve, reject) {
         var readStream;
         var writeStream;
@@ -419,13 +427,22 @@
         var lastReportedAt = 0;
         var settled = false;
         var opened = false;
+        var cancelTimer;
+
+        function stopCancellationWatch() {
+          if (cancelTimer) { clearInterval(cancelTimer); cancelTimer = null; }
+        }
 
         function cleanupAndReject(error) {
           function removePartialCopy() {
-            fs.unlink(destination, function () { reject(error); });
+            fs.unlink(destination, function (cleanupError) {
+              if (cleanupError && cleanupError.code !== "ENOENT") { error.residualPaths = [destination]; }
+              reject(error);
+            });
           }
           if (settled) { return; }
           settled = true;
+          stopCancellationWatch();
           if (readStream) { readStream.destroy(); }
           if (!opened) { reject(error); return; }
           if (writeStream) {
@@ -444,30 +461,59 @@
             fs.close(fileDescriptor, function () { cleanupAndReject(codedError("PACKAGING_CANCELLED", "项目素材打包已取消。")); });
             return;
           }
-          readStream = fs.createReadStream(source);
-          writeStream = fs.createWriteStream(destination, { fd: fileDescriptor, autoClose: true });
-          readStream.on("data", function (chunk) {
-            var currentTime = Date.now();
-            transferred += chunk.length;
-            if (cancelled(options)) {
-              cleanupAndReject(codedError("PACKAGING_CANCELLED", "项目素材打包已取消。"));
-              return;
-            }
-            if (currentTime - lastReportedAt >= 100 || transferred === sourceStat.size) {
-              lastReportedAt = currentTime;
+          fs.fstat(fileDescriptor, function (statError, destinationStat) {
+            if (statError) { fs.close(fileDescriptor, function () { cleanupAndReject(statError); }); return; }
+            created.push({ path: destination, stat: destinationStat, directory: false });
+            readStream = fs.createReadStream(source);
+            writeStream = fs.createWriteStream(destination, { fd: fileDescriptor, autoClose: true });
+            cancelTimer = setInterval(function () {
+              if (cancelled(options)) { cleanupAndReject(codedError("PACKAGING_CANCELLED", "项目素材打包已取消。")); }
+            }, 100);
+            readStream.on("data", function (chunk) {
+              var currentTime = Date.now();
+              transferred += chunk.length;
+              if (cancelled(options)) {
+                cleanupAndReject(codedError("PACKAGING_CANCELLED", "项目素材打包已取消。"));
+                return;
+              }
+              if (currentTime - lastReportedAt >= 100 || transferred === sourceStat.size) {
+                lastReportedAt = currentTime;
+                progress(transferred);
+              }
+            });
+            readStream.on("error", cleanupAndReject);
+            writeStream.on("error", cleanupAndReject);
+            writeStream.on("finish", function () {
+              if (settled) { return; }
+              settled = true;
+              stopCancellationWatch();
               progress(transferred);
-            }
+              preserveTimes(destination, sourceStat).then(function () { resolve(transferred); });
+            });
+            readStream.pipe(writeStream);
           });
-          readStream.on("error", cleanupAndReject);
-          writeStream.on("error", cleanupAndReject);
-          writeStream.on("finish", function () {
-            if (settled) { return; }
-            settled = true;
-            progress(transferred);
-            preserveTimes(destination, sourceStat).then(function () { resolve(transferred); });
-          });
-          readStream.pipe(writeStream);
         });
+      });
+    }
+
+    function rollbackCreated(created, error, destination) {
+      var recovery = { destination: destination || "", removed: [], retained: [] };
+      return created.slice().reverse().reduce(function (promise, entry) {
+        return promise.then(function () {
+          return lstat(entry.path).then(function (currentStat) {
+            if (!entry.stat.ino || entry.stat.ino !== currentStat.ino || entry.stat.dev !== currentStat.dev || currentStat.isSymbolicLink()) {
+              throw codedError("OUTPUT_CHANGED", "目标已被替换，已保留供检查。");
+            }
+            return callbackPromise(function (done) { fs[entry.directory ? "rmdir" : "unlink"](entry.path, done); });
+          }).then(function () { recovery.removed.push(entry.path); }, function (cleanupError) {
+            if (cleanupError && cleanupError.code === "ENOENT") { return; }
+            recovery.retained.push({ path: entry.path, error: serializeError(cleanupError) });
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        recovery.complete = recovery.retained.length === 0;
+        error.recovery = recovery;
+        throw error;
       });
     }
 
@@ -513,13 +559,14 @@
       var completedFiles = 0;
       var manifest;
       var manifestPath;
+      var created = [];
 
       options = options || {};
       emit(options.onProgress, { phase: "start", completed: 0, total: options.media instanceof Array ? options.media.length : 0, percent: 0 });
       return prepare(options).then(function (prepared) {
         plan = prepared;
         throwIfCancelled(options);
-        return ensureDestination(options.destination);
+        return ensureDestination(options.destination, created);
       }).then(function (preparedDestination) {
         var chain = Promise.resolve();
         destinationState = preparedDestination;
@@ -529,7 +576,7 @@
             var lastFileBytes = 0;
             var copiedToDestination = false;
             throwIfCancelled(options);
-            return ensureSafeParent(destinationState, destinationPath).then(function () {
+            return ensureSafeParent(destinationState, destinationPath, created).then(function () {
               emit(options.onProgress, {
                 phase: "copy",
                 completed: completedFiles,
@@ -550,7 +597,7 @@
                   percent: plan.totalBytes ? (copiedBytes + fileBytes) / plan.totalBytes : 0,
                   currentPath: file.sourcePath
                 });
-              }, options).then(function (transferred) {
+              }, options, created).then(function (transferred) {
                 copiedToDestination = true;
                 return transferred;
               });
@@ -603,6 +650,7 @@
           totalBytes: plan.totalBytes,
           percent: 1
         });
+        throwIfCancelled(options);
         return writeFileExclusive(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
       }).then(function () {
         var result = {
@@ -627,6 +675,11 @@
           result: result
         });
         return result;
+      }).catch(function (error) {
+        if (error && error.code === "PACKAGING_CANCELLED") {
+          return rollbackCreated(created, error, destinationState && destinationState.path);
+        }
+        throw error;
       });
     }
 

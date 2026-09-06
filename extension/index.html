@@ -2,6 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="lkfb-version" content="0.6.7" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval';" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LK‘s File Bridge</title>
@@ -115,6 +116,8 @@
       <button id="createFolderFromResultsButton" class="menu-action" type="button">新建文件夹</button>
       <button id="uploadFilesButton" class="menu-action" type="button">上传文件</button>
       <button id="pasteAssetsFromResultsButton" class="menu-action" type="button" disabled>粘贴</button>
+      <button id="clearPreviewCacheButton" class="menu-action" type="button">清理闲置预览缓存</button>
+      <button id="diagnosticsButton" class="menu-action" type="button">版本与运行信息</button>
     </div>
 
     <div id="toolbarSearchPopover" class="toolbar-search" hidden></div>
@@ -225,6 +228,7 @@
     <script src="js/timecode.js"></script>
     <script src="js/state-store.js"></script>
     <script src="js/plugin-folder-ops.js"></script>
+    <script src="js/virtual-grid.js"></script>
     <script src="js/file-ops.js"></script>
     <script src="js/asset-ops.js"></script>
     <script src="js/project-packager.js"></script>

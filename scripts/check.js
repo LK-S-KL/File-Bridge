@@ -17,13 +17,14 @@ const assetOpsPath = path.join(extensionRoot, "js", "asset-ops.js");
 const projectPackagerPath = path.join(extensionRoot, "js", "project-packager.js");
 const interactionToolsPath = path.join(extensionRoot, "js", "interaction-tools.js");
 const pluginFolderOpsPath = path.join(extensionRoot, "js", "plugin-folder-ops.js");
+const virtualGridPath = path.join(extensionRoot, "js", "virtual-grid.js");
 const playerCssPath = path.join(extensionRoot, "css", "player-4.5.css");
 const playerCameraIconPath = path.join(extensionRoot, "ui", "player", "icons", "camera.svg");
 const hostPath = path.join(extensionRoot, "jsx", "host.jsx");
 const manifestPath = path.join(extensionRoot, "CSXS", "manifest.xml");
 const debugPath = path.join(extensionRoot, ".debug");
 
-for (const sourcePath of [mainPath, libraryPath, mediaToolsPath, lutToolsPath, timecodePath, stateStorePath, fileOpsPath, assetOpsPath, projectPackagerPath, interactionToolsPath, pluginFolderOpsPath, hostPath]) {
+for (const sourcePath of [mainPath, libraryPath, mediaToolsPath, lutToolsPath, timecodePath, stateStorePath, fileOpsPath, assetOpsPath, projectPackagerPath, interactionToolsPath, pluginFolderOpsPath, virtualGridPath, hostPath]) {
   const source = fs.readFileSync(sourcePath, "utf8");
   new vm.Script(source, { filename: sourcePath });
 }
@@ -51,7 +52,7 @@ const pluginFolderOpsSource = fs.readFileSync(pluginFolderOpsPath, "utf8");
 assert.equal(/\b(unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|truncate|truncateSync)\b/.test(mainSource), false, "Source file actions must never permanently delete or truncate media");
 assert.equal(/\b(unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|truncate|truncateSync)\b/.test(fileOpsSource), false, "File operations must never permanently delete or truncate media");
 assert.match(fileOpsSource, /trashItemAtURLResultingItemURLError/, "Trash must use the recoverable Foundation API");
-assert.match(mainSource, /fileOps\.validateSource\(asset, state\.roots\)/, "Rename/trash must revalidate the selected source");
+assert.match(mainSource, /assetOps\.renameAsset\(/, "Rename must use the async validated source operation");
 assert.match(fs.readFileSync(interactionToolsPath, "utf8"), /com\.adobe\.cep\.dnd\.file\./, "Premiere CEP drag payload must be present");
 assert.match(mainSource, /state\.hostId !== "PPRO"/, "Dragging must be disabled outside Premiere");
 assert.match(mainSource, /scanLibraryAsync/, "CEP must use the asynchronous SMB scanner");

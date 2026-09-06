@@ -483,41 +483,67 @@
     var sourceStatCooldown = {};
     var ffmpegQueue = [];
     var activeFfmpegJobs = {};
+    var cancelledJobKeys = {};
+    var cancelledPrefixes = {};
     var activeFfmpegCount = 0;
     var nextFfmpegJobId = 1;
     var MAX_FFMPEG_CONCURRENCY = 2;
-    var cachePruneScheduled = false;
+    var terminationGraceMs = Math.max(10, Number(runtime.terminationGraceMs) || 600);
+    var cacheSettings = runtime.cacheSettings || {};
+    var cacheMaxBytes = Number(cacheSettings.maxBytes) || 12 * 1024 * 1024 * 1024;
+    var cacheTargetBytes = Math.min(cacheMaxBytes, Number(cacheSettings.targetBytes) || 10 * 1024 * 1024 * 1024);
+    var minimumFreeBytes = cacheSettings.minimumFreeBytes === 0 ? 0 : Number(cacheSettings.minimumFreeBytes) || 512 * 1024 * 1024;
+    var cacheRecords = {};
+    var cacheRetains = {};
+    var cacheLeases = {};
+    var cacheReservations = {};
+    var cacheIndexPromise = null;
+    var cacheMaintenance = Promise.resolve();
+    var availableSpace = null;
+    var availableSpaceAt = 0;
+    var activeTemporaryPaths = {};
+    var activeWorkDirectories = {};
+    var cacheWorkDirectories = {};
     var nextTemporaryOutputId = 1;
 
     function statSource(filePath) {
       var now = Date.now();
       var cached = sourceStatCache[filePath];
-      if (cached && now - cached.at < 1500) { return Promise.resolve(cached.stat); }
+      if (cached && now - cached.at < (runtime.sourceStatTtlMs === 0 ? 0 : 1500)) { return Promise.resolve(cached.stat); }
       if (pendingSourceStats[filePath]) { return pendingSourceStats[filePath]; }
       if (sourceStatCooldown[filePath] && sourceStatCooldown[filePath] > now) { return Promise.reject(new Error("SOURCE_TIMEOUT")); }
-      pendingSourceStats[filePath] = new Promise(function (resolve, reject) {
+      var request = new Promise(function (resolve, reject) {
         var timedOut = false;
+        var finished = false;
         var timeout = setTimeout(function () {
-          timedOut = true; delete pendingSourceStats[filePath]; sourceStatCooldown[filePath] = Date.now() + 30000;
+          timedOut = true; finished = true; delete pendingSourceStats[filePath]; sourceStatCooldown[filePath] = Date.now() + 30000;
           reject(new Error("SOURCE_TIMEOUT"));
         }, 15000);
-        fs.stat(filePath, function (error, stat) {
-          if (timedOut) {
-            if (!error && stat && stat.isFile()) { sourceStatCache[filePath] = { stat: stat, at: Date.now() }; delete sourceStatCooldown[filePath]; }
-            return;
-          }
+        function statCompleted(error, stat) {
+          if (timedOut || finished) { return; }
+          finished = true;
           clearTimeout(timeout); delete pendingSourceStats[filePath];
           if (error) { reject(error); return; }
           if (!stat || !stat.isFile()) { reject(new Error("FILE_NOT_FOUND")); return; }
           sourceStatCache[filePath] = { stat: stat, at: Date.now() }; resolve(stat);
-        });
+        }
+        try { fs.stat(filePath, statCompleted); } catch (error) { statCompleted(error); }
       });
+      pendingSourceStats[filePath] = request.then(function (stat) {
+        delete pendingSourceStats[filePath]; return stat;
+      }, function (error) { delete pendingSourceStats[filePath]; throw error; });
       return pendingSourceStats[filePath];
     }
 
     function usableCacheFile(filePath) {
       try {
-        return fs.existsSync(filePath) && fs.statSync(filePath).isFile() && fs.statSync(filePath).size > 0;
+        var stat = fs.statSync(filePath);
+        if (!stat.isFile() || stat.size <= 0) { return false; }
+        if (filePath.indexOf(cacheRoot + path.sep) === 0) {
+          cacheLeases[filePath] = Date.now() + 10000;
+          if (cacheRecords[filePath]) { cacheRecords[filePath].usedMs = Date.now(); }
+        }
+        return true;
       } catch (error) {
         return false;
       }
@@ -527,6 +553,7 @@
       try {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
+          delete cacheRecords[filePath];
         }
       } catch (ignoreCleanupError) {}
     }
@@ -537,54 +564,167 @@
       });
     }
 
-    function scheduleCachePrune() {
+    function cacheCall(method, args) {
+      return new Promise(function (resolve, reject) {
+        var finished = false;
+        var timer = setTimeout(function () {
+          if (finished) { return; } finished = true; reject(new Error("CACHE_IO_TIMEOUT"));
+        }, 5000);
+        function done(error, result) {
+          if (finished) { return; } finished = true; clearTimeout(timer);
+          if (error) { reject(error); } else { resolve(result); }
+        }
+        try { fs[method].apply(fs, args.concat(done)); } catch (error) { done(error); }
+      });
+    }
+
+    function ownedCachePath(filePath) {
+      return path.resolve(filePath).indexOf(cacheRoot + path.sep) === 0;
+    }
+
+    function cacheProtected(filePath) {
+      return cacheRetains[filePath] > 0 || cacheLeases[filePath] > Date.now() || pendingOutputs[filePath] || activeTemporaryPaths[filePath];
+    }
+
+    function retainCacheFile(filePath) {
+      if (!filePath || !ownedCachePath(filePath)) { return; }
+      cacheRetains[filePath] = (cacheRetains[filePath] || 0) + 1;
+    }
+
+    function releaseCacheFile(filePath) {
+      if (!filePath || !cacheRetains[filePath]) { return; }
+      cacheRetains[filePath] -= 1;
+      if (!cacheRetains[filePath]) { delete cacheRetains[filePath]; }
+    }
+
+    function recordCacheFile(filePath) {
+      return cacheCall("lstat", [filePath]).then(function (stat) {
+        if (stat.isFile() && !stat.isSymbolicLink()) {
+          cacheRecords[filePath] = { path: filePath, size: stat.size, usedMs: Date.now() };
+        }
+      });
+    }
+
+    function indexCache() {
+      if (cacheIndexPromise) { return cacheIndexPromise; }
       var directories = [metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory, stillPreviewDirectory];
-      var timer;
-      if (cachePruneScheduled) { return; }
-      cachePruneScheduled = true;
-      timer = setTimeout(function () {
-        var paths = [];
-        var pendingDirectories = directories.length;
-        function collectStats() {
-          var records = [];
+      function visit(directory) {
+        return cacheCall("readdir", [directory]).then(function (names) {
           var cursor = 0;
-          var active = 0;
-          function next() {
-            var filePath;
-            while (active < 16 && cursor < paths.length) {
-              filePath = paths[cursor]; cursor += 1; active += 1;
-              (function (candidate) {
-                fs.stat(candidate, function (error, stat) {
-                  active -= 1;
-                  if (!error && stat && stat.isFile()) { records.push({ path: candidate, size: stat.size, modifiedMs: stat.mtimeMs || stat.mtime.getTime() }); }
-                  if (!active && cursor >= paths.length) { prune(records); }
-                  else { next(); }
-                });
-              }(filePath));
-            }
-            if (!active && cursor >= paths.length) { prune(records); }
+          function batch() {
+            var group = names.slice(cursor, cursor + 24); cursor += group.length;
+            if (!group.length) { return; }
+            return Promise.all(group.map(function (name) {
+              var filePath = path.join(directory, name);
+              return cacheCall("lstat", [filePath]).then(function (stat) {
+                if (stat.isSymbolicLink()) { return; }
+                if (stat.isDirectory() && name.charAt(0) === ".") {
+                  cacheWorkDirectories[filePath] = stat.mtimeMs || stat.mtime.getTime();
+                  return visit(filePath);
+                }
+                if (stat.isFile() && !cacheRecords[filePath]) {
+                  cacheRecords[filePath] = { path: filePath, size: stat.size, usedMs: stat.mtimeMs || stat.mtime.getTime(), temporary: name.charAt(0) === "." || /\.part\./.test(name) || directories.indexOf(directory) === -1 };
+                }
+              }).catch(function (error) { if (error.code !== "ENOENT") { throw error; } });
+            })).then(batch);
           }
-          next();
-        }
-        function prune(records) {
-          var total = records.reduce(function (sum, record) { return sum + record.size; }, 0);
-          var target = 10 * 1024 * 1024 * 1024;
-          var recentBoundary = Date.now() - 24 * 60 * 60 * 1000;
-          if (total <= 12 * 1024 * 1024 * 1024) { return; }
-          records.sort(function (left, right) { return left.modifiedMs - right.modifiedMs; });
-          records.forEach(function (record) {
-            if (total <= target || record.modifiedMs > recentBoundary || pendingOutputs[record.path]) { return; }
-            total -= record.size; fs.unlink(record.path, function () {});
-          });
-        }
-        directories.forEach(function (directory) {
-          fs.readdir(directory, function (error, names) {
-            if (!error && names) { names.forEach(function (name) { paths.push(path.join(directory, name)); }); }
-            pendingDirectories -= 1; if (!pendingDirectories) { collectStats(); }
+          return batch();
+        });
+      }
+      cacheIndexPromise = Promise.all(directories.map(visit)).catch(function (error) { cacheIndexPromise = null; throw error; });
+      return cacheIndexPromise;
+    }
+
+    function cacheTotals() {
+      var total = Object.keys(cacheRecords).reduce(function (sum, key) { return sum + cacheRecords[key].size; }, 0);
+      var reserved = Object.keys(cacheReservations).reduce(function (sum, key) { return sum + cacheReservations[key]; }, 0);
+      return { bytes: total, reservedBytes: reserved, maxBytes: cacheMaxBytes, targetBytes: cacheTargetBytes };
+    }
+
+    function pruneCacheInternal(extraBytes, force) {
+      return indexCache().then(function () {
+        var total = cacheTotals().bytes;
+        var reservation = cacheTotals().reservedBytes + (Number(extraBytes) || 0);
+        var budgetExceeded = total + reservation > cacheMaxBytes;
+        var target = force ? 0 : budgetExceeded ? Math.max(0, Math.min(cacheTargetBytes, cacheMaxBytes - reservation)) : total;
+        var records = Object.keys(cacheRecords).map(function (key) { return cacheRecords[key]; }).sort(function (a, b) { return a.usedMs - b.usedMs; });
+        var chain = Promise.resolve();
+        records.forEach(function (record) {
+          chain = chain.then(function () {
+            var staleTemporary = record.temporary && record.usedMs < Date.now() - 3600000;
+            if ((!staleTemporary && total <= target) || cacheProtected(record.path)) { return; }
+            return cacheCall("unlink", [record.path]).then(function () {
+              total -= record.size; delete cacheRecords[record.path];
+            }, function (error) {
+              if (error.code === "ENOENT") { total -= record.size; delete cacheRecords[record.path]; }
+            });
           });
         });
-      }, 1200);
-      if (timer && typeof timer.unref === "function") { timer.unref(); }
+        return chain.then(function () {
+          return Promise.all(Object.keys(cacheWorkDirectories).map(function (directory) {
+            if (cacheWorkDirectories[directory] > Date.now() - 3600000 || activeWorkDirectories[directory]) { return; }
+            return removeOwnedWorkDirectory(directory).then(function () { delete cacheWorkDirectories[directory]; });
+          }));
+        }).then(function () {
+          if (total + reservation > cacheMaxBytes) { var error = new Error("CACHE_BUDGET_EXCEEDED"); error.code = "CACHE_BUDGET_EXCEEDED"; throw error; }
+          return cacheTotals();
+        });
+      });
+    }
+
+    function cacheTask(operation) {
+      var result = cacheMaintenance.then(operation, operation);
+      cacheMaintenance = result.catch(function () {});
+      return result;
+    }
+
+    function pruneCache(options) {
+      return cacheTask(function () { return pruneCacheInternal(0, options && options.clearUnused); });
+    }
+
+    function checkAvailableSpace() {
+      if (!minimumFreeBytes) { return Promise.resolve(); }
+      if (availableSpace !== null && Date.now() - availableSpaceAt < 5000) {
+        return availableSpace < minimumFreeBytes ? Promise.reject(new Error("CACHE_DISK_FULL")) : Promise.resolve();
+      }
+      var request;
+      if (typeof runtime.availableCacheBytes === "function") { request = Promise.resolve().then(runtime.availableCacheBytes); }
+      else if (typeof fs.statfs === "function") {
+        request = cacheCall("statfs", [cacheRoot]).then(function (stat) { return Number(stat.bavail) * Number(stat.bsize); });
+      } else {
+        request = execFileQueued("/bin/df", ["-Pk", cacheRoot], { timeout: 5000, maxBuffer: 32768 }, "disk:cache").then(function (result) {
+          var line = String(result.stdout).trim().split(/\n/).pop().trim().split(/\s+/);
+          var free = Number(line[3]) * 1024;
+          if (!isFinite(free)) { throw new Error("CACHE_SPACE_UNAVAILABLE"); }
+          return free;
+        });
+      }
+      return request.then(function (free) {
+        availableSpace = free; availableSpaceAt = Date.now();
+        if (free < minimumFreeBytes) { var error = new Error("CACHE_DISK_FULL"); error.code = "CACHE_DISK_FULL"; throw error; }
+      });
+    }
+
+    function prepareCacheOutput(temporary, destination, args) {
+      var isProxy = /\.(mp4|m4a)$/.test(destination);
+      var inputIndex = args.indexOf("-i");
+      var inputStat = inputIndex >= 0 && sourceStatCache[args[inputIndex + 1]];
+      var estimatedBytes = inputStat ? inputStat.stat.size * 2 + 16 * 1024 * 1024 : 256 * 1024 * 1024;
+      var diskLimit = 0;
+      var reservation = Math.min(cacheMaxBytes, isProxy ? Number(cacheSettings.proxyReservationBytes) || Math.max(64 * 1024 * 1024, estimatedBytes) : 8 * 1024 * 1024);
+      return checkAvailableSpace().then(function () {
+        if (availableSpace !== null) {
+          diskLimit = Math.max(0, availableSpace - minimumFreeBytes - cacheTotals().reservedBytes);
+          if (diskLimit < 8 * 1024 * 1024) { throw new Error("CACHE_DISK_FULL"); }
+          reservation = Math.min(reservation, diskLimit);
+        }
+        return cacheTask(function () {
+          return pruneCacheInternal(reservation).then(function () {
+            cacheReservations[temporary] = reservation; activeTemporaryPaths[temporary] = true;
+            args.splice(args.length - 1, 0, "-fs", String(reservation));
+          });
+        });
+      });
     }
 
     function findBinary(name) {
@@ -612,28 +752,73 @@
       return error;
     }
 
+    function terminalMediaError(error) {
+      return !!(error && (error.code === "JOB_CANCELLED" || error.code === "MEDIA_PROCESS_TIMEOUT" || /^(CACHE_|FFMPEG_NOT_FOUND|FFPROBE_NOT_FOUND)/.test(error.code || error.message || "")));
+    }
+
     function pumpFfmpegQueue() {
       var job;
+      var index;
       while (activeFfmpegCount < MAX_FFMPEG_CONCURRENCY && ffmpegQueue.length) {
-        job = ffmpegQueue.shift();
+        index = ffmpegQueue.findIndex(function (candidate) {
+          var backgroundActive = Object.keys(activeFfmpegJobs).some(function (id) { return !/^(preview|audio|capture):/.test(activeFfmpegJobs[id].key); });
+          return /^(preview|audio|capture):/.test(candidate.key) || !backgroundActive;
+        });
+        if (index < 0) { return; }
+        job = ffmpegQueue.splice(index, 1)[0];
         if (job.cancelled) { continue; }
         activeFfmpegCount += 1; activeFfmpegJobs[job.id] = job;
         (function (current) {
-          current.child = childProcess.execFile(current.binary, current.args, current.options, function (error, stdout, stderr) {
-            activeFfmpegCount = Math.max(0, activeFfmpegCount - 1); delete activeFfmpegJobs[current.id];
-            if (current.cancelled) { current.reject(cancelledError()); }
-            else if (error) { current.reject(error); }
-            else { current.resolve({ stdout: stdout, stderr: stderr }); }
-            pumpFfmpegQueue();
-          });
-          if (current.onOutput && current.child.stdout) { current.child.stdout.on("data", current.onOutput); }
+          current.timeoutTimer = setTimeout(function () {
+            var timeoutError = new Error("MEDIA_PROCESS_TIMEOUT"); timeoutError.code = "MEDIA_PROCESS_TIMEOUT";
+            terminateJob(current, timeoutError);
+          }, Math.max(1, Number(current.options.timeout) || 120000));
+          try {
+            current.child = childProcess.execFile(current.binary, current.args, current.options, function (error, stdout, stderr) {
+              settleJob(current, current.cancelled ? (current.stopError || cancelledError()) : error, { stdout: stdout, stderr: stderr });
+              releaseJob(current);
+            });
+            if (current.onOutput && current.child && current.child.stdout) {
+              current.child.stdout.on("data", function (chunk) { if (!current.settled) { current.onOutput(chunk); } });
+            }
+          } catch (spawnError) {
+            settleJob(current, spawnError); releaseJob(current);
+          }
         }(job));
       }
     }
 
-    function execFileQueued(binary, args, options, jobKey, onOutput) {
+    function settleJob(job, error, result) {
+      if (job.settled) { return; }
+      job.settled = true;
+      if (error) { job.reject(error); } else { job.resolve(result); }
+    }
+
+    function releaseJob(job) {
+      if (job.released) { return; }
+      job.released = true;
+      clearTimeout(job.timeoutTimer); clearTimeout(job.killTimer);
+      activeFfmpegCount = Math.max(0, activeFfmpegCount - 1);
+      delete activeFfmpegJobs[job.id];
+      if (job.cancelled && typeof job.onReaped === "function") { job.onReaped(); }
+      pumpFfmpegQueue();
+    }
+
+    function terminateJob(job, error) {
+      if (job.cancelled || job.released) { return; }
+      job.cancelled = true; job.stopError = error || cancelledError();
+      settleJob(job, job.stopError);
+      clearTimeout(job.timeoutTimer);
+      job.killTimer = setTimeout(function () {
+        try { if (job.child) { job.child.kill("SIGKILL"); } } catch (ignoreKillError) {}
+        releaseJob(job);
+      }, terminationGraceMs);
+      try { if (job.child) { job.child.kill("SIGTERM"); } } catch (ignoreTerminateError) {}
+    }
+
+    function execFileQueued(binary, args, options, jobKey, onOutput, onReaped) {
       return new Promise(function (resolve, reject) {
-        var job = { id: nextFfmpegJobId, binary: binary, args: args, options: options, key: jobKey || "derived", onOutput: onOutput, resolve: resolve, reject: reject, child: null, cancelled: false };
+        var job = { id: nextFfmpegJobId, binary: binary, args: args, options: options, key: jobKey || "derived", onOutput: onOutput, onReaped: onReaped, resolve: resolve, reject: reject, child: null, cancelled: false };
         nextFfmpegJobId += 1;
         if (/^(preview|audio|capture|user-transcode):/.test(job.key)) { ffmpegQueue.unshift(job); }
         else { ffmpegQueue.push(job); }
@@ -642,28 +827,28 @@
     }
 
     function cancelJobKey(jobKey) {
+      cancelledJobKeys[jobKey] = (cancelledJobKeys[jobKey] || 0) + 1;
       ffmpegQueue = ffmpegQueue.filter(function (job) {
         if (job.key !== jobKey) { return true; }
-        job.cancelled = true; job.reject(cancelledError()); return false;
+        job.cancelled = true; settleJob(job, cancelledError()); return false;
       });
       Object.keys(activeFfmpegJobs).forEach(function (id) {
         var job = activeFfmpegJobs[id];
         if (job.key !== jobKey || job.cancelled) { return; }
-        job.cancelled = true;
-        try { job.child.kill("SIGTERM"); } catch (ignoreKillError) {}
+        terminateJob(job);
       });
     }
 
     function cancelJobPrefix(prefix) {
+      cancelledPrefixes[prefix] = (cancelledPrefixes[prefix] || 0) + 1;
       ffmpegQueue = ffmpegQueue.filter(function (job) {
         if (job.key.indexOf(prefix) !== 0) { return true; }
-        job.cancelled = true; job.reject(cancelledError()); return false;
+        job.cancelled = true; settleJob(job, cancelledError()); return false;
       });
       Object.keys(activeFfmpegJobs).forEach(function (id) {
         var job = activeFfmpegJobs[id];
         if (job.key.indexOf(prefix) !== 0 || job.cancelled) { return; }
-        job.cancelled = true;
-        try { job.child.kill("SIGTERM"); } catch (ignoreKillError) {}
+        terminateJob(job);
       });
     }
 
@@ -685,12 +870,24 @@
     }
 
     function publishCacheOutput(temporary, destination) {
-      return new Promise(function (resolve, reject) {
-        fs.link(temporary, destination, function (error) {
-          if (!error || (error.code === "EEXIST" && usableCacheFile(destination))) {
-            fs.unlink(temporary, function () { resolve(destination); }); return;
-          }
-          fs.unlink(temporary, function () { reject(error); });
+      return cacheTask(function () {
+        var limit = cacheReservations[temporary];
+        return cacheCall("stat", [temporary]).then(function (stat) {
+          delete cacheReservations[temporary];
+          if (limit && stat.size >= limit * .98) { throw new Error("CACHE_OUTPUT_LIMIT"); }
+          return pruneCacheInternal(stat.size);
+        }).then(function () {
+          return cacheCall("link", [temporary, destination]).catch(function (error) {
+            if (error.code !== "EEXIST" || !usableCacheFile(destination)) { throw error; }
+          });
+        }).then(function () {
+          return recordCacheFile(destination).then(function () {
+            return cacheCall("unlink", [temporary]).catch(function () {});
+          });
+        }).then(function () {
+          delete activeTemporaryPaths[temporary]; cacheLeases[destination] = Date.now() + 10000;
+          availableSpaceAt = 0;
+          return destination;
         });
       });
     }
@@ -701,16 +898,25 @@
       var actualDestination = isCacheOutput ? cacheTemporaryPath(destination) : destination;
       var actualArgs = args.slice();
       var outputIndex;
+      var cancellationEpoch = (cancelledJobKeys[jobKey] || 0);
+      var prefixEpoch = Object.keys(cancelledPrefixes).reduce(function (sum, prefix) { return sum + (String(jobKey).indexOf(prefix) === 0 ? cancelledPrefixes[prefix] : 0); }, 0);
       if (!ffmpeg) {
         return Promise.reject(new Error("FFMPEG_NOT_FOUND"));
       }
       if (isCacheOutput) {
         for (outputIndex = actualArgs.length - 1; outputIndex >= 0; outputIndex -= 1) { if (actualArgs[outputIndex] === destination) { actualArgs[outputIndex] = actualDestination; break; } }
       }
-      return execFileQueued(ffmpeg, actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput).then(function (result) {
+      var prepare = isCacheOutput ? prepareCacheOutput(actualDestination, destination, actualArgs) : Promise.resolve();
+      return prepare.then(function () {
+        var currentPrefixEpoch = Object.keys(cancelledPrefixes).reduce(function (sum, prefix) { return sum + (String(jobKey).indexOf(prefix) === 0 ? cancelledPrefixes[prefix] : 0); }, 0);
+        if ((cancelledJobKeys[jobKey] || 0) !== cancellationEpoch || currentPrefixEpoch !== prefixEpoch) { throw cancelledError(); }
+        return execFileQueued(ffmpeg, actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput, function () { removeFailedCacheFile(actualDestination); });
+      }).then(function (result) {
         if (!usableCacheFile(actualDestination)) { throw new Error(result.stderr || "OUTPUT_NOT_CREATED"); }
         return isCacheOutput ? publishCacheOutput(actualDestination, destination) : destination;
       }).catch(function (error) {
+        delete cacheReservations[actualDestination]; delete activeTemporaryPaths[actualDestination];
+        availableSpaceAt = 0;
         removeFailedCacheFile(actualDestination); throw error;
       });
     }
@@ -765,7 +971,7 @@
         if (pendingOutputs[destination]) { return pendingOutputs[destination]; }
         cancelJobKey("preview:" + filePath);
         return outputOnce(destination, function () { return runFfmpeg(hardwareArgs, destination, 180000, "preview:" + filePath).catch(function (error) {
-          if (error && error.code === "JOB_CANCELLED") { throw error; }
+          if (terminalMediaError(error)) { throw error; }
           return runFfmpeg(baseArgs, destination, 180000, "preview:" + filePath);
         }); });
       });
@@ -862,7 +1068,7 @@
         var hardware = ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-i", filePath, "-vf", filter, "-c:v", "h264_videotoolbox", "-b:v", config.bitrate, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"].concat(progressArgs, ["-y", destination]);
         var software = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-vf", filter, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-threads", "0"].concat(progressArgs, ["-y", destination]);
         return runFfmpeg(hardware, destination, 600000, "user-transcode:" + destination, readProgress).catch(function (error) {
-          if (error && error.code === "JOB_CANCELLED") { throw error; }
+          if (terminalMediaError(error)) { throw error; }
           if (typeof onProgress === "function") { onProgress({ ratio: 0, seconds: 0, duration: Number(metadata.duration) || 0, fallback: true }); }
           return runFfmpeg(software, destination, 600000, "user-transcode:" + destination, readProgress);
         });
@@ -906,7 +1112,7 @@
     }
 
     function cacheKey(filePath, stat) {
-      return crypto.createHash("sha1").update(filePath + ":" + stat.size + ":" + stat.mtimeMs).digest("hex");
+      return crypto.createHash("sha1").update([filePath, stat.size, stat.mtimeMs || stat.mtime && stat.mtime.getTime(), stat.ctimeMs || stat.ctime && stat.ctime.getTime(), stat.ino, stat.dev].join(":")).digest("hex");
     }
 
     function metadataFor(filePath) {
@@ -924,17 +1130,16 @@
         }
         ffprobe = findBinary("ffprobe");
         if (!ffprobe) { throw new Error("FFPROBE_NOT_FOUND"); }
-        pendingMetadata[key] = new Promise(function (resolve, reject) {
-          childProcess.execFile(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", filePath], { timeout: 30000, maxBuffer: 8 * 1024 * 1024 }, function (error, stdout) {
-            var normalized;
-            delete pendingMetadata[key];
-            if (error) { reject(error); return; }
-            try {
-              normalized = normalizeProbe(JSON.parse(stdout), stat, filePath); memoryMetadata[key] = normalized;
-              fs.writeFileSync(cacheFile, JSON.stringify(normalized), "utf8"); resolve(normalized);
-            } catch (parseError) { reject(parseError); }
-          });
-        });
+        pendingMetadata[key] = execFileQueued(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", filePath], { timeout: 30000, maxBuffer: 8 * 1024 * 1024 }, "metadata:" + filePath).then(function (result) {
+          var normalized = normalizeProbe(JSON.parse(result.stdout), stat, filePath);
+          var serialized = JSON.stringify(normalized);
+          memoryMetadata[key] = normalized;
+          return cacheTask(function () {
+            return pruneCacheInternal(Buffer.byteLength(serialized, "utf8")).then(function () {
+              return cacheCall("writeFile", [cacheFile, serialized, "utf8"]);
+            }).then(function () { return recordCacheFile(cacheFile); });
+          }).then(function () { return normalized; }, function () { return normalized; });
+        }).then(function (result) { delete pendingMetadata[key]; return result; }, function (error) { delete pendingMetadata[key]; throw error; });
         return pendingMetadata[key];
       });
     }
@@ -985,7 +1190,7 @@
           function tryCandidate(index) {
             if (index >= times.length) { return Promise.reject(lastError || new Error("POSTER_FRAME_NOT_FOUND")); }
             return generatePosterFrame(filePath, destination, times[index], videoStreamIndex, true).catch(function (error) {
-              if (error && error.code === "JOB_CANCELLED") { throw error; }
+              if (terminalMediaError(error)) { throw error; }
               lastError = error;
               if (error && error.message === "OUTPUT_NOT_CREATED") { return tryCandidate(index + 1); }
               throw error;
@@ -995,17 +1200,20 @@
           return outputOnce(destination, function () {
             return tryCandidate(0).catch(function (error) {
               var finalTime;
-              if (error && error.code === "JOB_CANCELLED") { throw error; }
+              if (terminalMediaError(error)) { throw error; }
               finalTime = times[times.length - 1] || 0;
               /* A genuinely dark source still deserves a thumbnail. After all
                  representative candidates are rejected, keep its last frame. */
               return generatePosterFrame(filePath, destination, finalTime, videoStreamIndex, false).catch(function (directError) {
-                if (directError && directError.code === "JOB_CANCELLED") { throw directError; }
+                if (terminalMediaError(directError)) { throw directError; }
                 return previewProxyFor(filePath, "720").then(function (proxyPath) {
                   return generatePosterFrame(proxyPath, destination, finalTime, 0, false);
                 }).catch(function (proxyError) {
-                  if (proxyError && proxyError.code === "JOB_CANCELLED") { throw proxyError; }
-                  return frameFor(filePath, finalTime, 480, 270).catch(function () { throw directError; });
+                  if (terminalMediaError(proxyError)) { throw proxyError; }
+                  return frameFor(filePath, finalTime, 480, 270).catch(function (frameError) {
+                    if (terminalMediaError(frameError)) { throw frameError; }
+                    throw directError;
+                  });
                 });
               });
             });
@@ -1018,39 +1226,64 @@
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat) + "-ql-v1";
         var destination = path.join(stillPreviewDirectory, key + ".png");
-        var workDirectory = path.join(stillPreviewDirectory, "." + key + "-" + process.pid);
         var extension = String(path.extname(filePath)).toLowerCase();
         if (usableCacheFile(destination)) { return destination; }
         if (extension === ".psd" || extension === ".psb") {
-          return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, "derived:" + destination);
+          return outputOnce(destination, function () { return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, "derived:" + destination); });
         }
-        fs.mkdirSync(workDirectory, { recursive: true });
-        function quickLookFallback() { return new Promise(function (resolve, reject) {
-          childProcess.execFile("/usr/bin/qlmanage", ["-t", "-s", "960", "-o", workDirectory, filePath], { timeout: 8000, maxBuffer: 1024 * 1024 }, function (error) {
-            if (error) { reject(error); return; }
-            fs.readdir(workDirectory, function (readError, names) {
-              var generated;
-              if (readError) { reject(readError); return; }
-              generated = names.filter(function (name) { return /\.png$/i.test(name); })[0];
-              if (!generated) { reject(new Error("QUICKLOOK_OUTPUT_NOT_CREATED")); return; }
-              fs.copyFile(path.join(workDirectory, generated), destination, function (copyError) {
-                fs.unlink(path.join(workDirectory, generated), function () { fs.rmdir(workDirectory, function () {}); });
-                if (copyError) { reject(copyError); return; }
-                resolve(destination);
-              });
+        return outputOnce(destination, function () {
+          var temporary = cacheTemporaryPath(destination);
+          var workDirectory = path.join(stillPreviewDirectory, "." + key + "-" + process.pid + "-" + nextTemporaryOutputId);
+          var pdfOutput = path.join(workDirectory, "render.png");
+          var jobKey = "derived:" + destination;
+          var pdfRenderer = ["/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm"].filter(function (candidate) { return fs.existsSync(candidate); })[0];
+          function quickLookFallback(error) {
+            if (terminalMediaError(error)) { throw error; }
+            return execFileQueued("/usr/bin/qlmanage", ["-t", "-s", "960", "-o", workDirectory, filePath], { timeout: 8000, maxBuffer: 1024 * 1024 }, jobKey).then(function () {
+              return cacheCall("readdir", [workDirectory]);
+            }).then(function (names) {
+              var generated = names.filter(function (name) { return /\.png$/i.test(name) && name !== "render.png"; })[0];
+              if (!generated) { throw new Error("QUICKLOOK_OUTPUT_NOT_CREATED"); }
+              return path.join(workDirectory, generated);
             });
+          }
+          function cleanup() {
+            delete activeWorkDirectories[workDirectory];
+            delete cacheReservations[temporary]; delete activeTemporaryPaths[temporary];
+            removeFailedCacheFile(temporary);
+            return removeOwnedWorkDirectory(workDirectory);
+          }
+          return prepareCacheOutput(temporary, destination, [temporary]).then(function () {
+            activeWorkDirectories[workDirectory] = true;
+            return cacheCall("mkdir", [workDirectory, { recursive: true }]);
+          }).then(function () {
+            if (!pdfRenderer) { return quickLookFallback(); }
+            return execFileQueued(pdfRenderer, ["-png", "-f", "1", "-l", "1", "-singlefile", "-scale-to", "960", filePath, pdfOutput.slice(0, -4)], { timeout: 45000, maxBuffer: 1024 * 1024 }, jobKey).then(function () {
+              if (!usableCacheFile(pdfOutput)) { throw new Error("PDF_PREVIEW_NOT_CREATED"); }
+              return pdfOutput;
+            }).catch(quickLookFallback);
+          }).then(function (generated) {
+            return cacheCall("copyFile", [generated, temporary, fs.constants.COPYFILE_EXCL]);
+          }).then(function () { return publishCacheOutput(temporary, destination); }).then(function (result) {
+            return cleanup().then(function () { return result; });
+          }, function (error) {
+            return cleanup().then(function () { throw error; });
           });
-        }); }
-        var pdfRenderer = ["/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm"].filter(function (candidate) { return fs.existsSync(candidate); })[0];
-        if (!pdfRenderer) { return quickLookFallback(); }
-        return new Promise(function (resolve, reject) {
-          var destinationBase = destination.slice(0, -4);
-          childProcess.execFile(pdfRenderer, ["-png", "-f", "1", "-l", "1", "-singlefile", "-scale-to", "960", filePath, destinationBase], { timeout: 45000, maxBuffer: 1024 * 1024 }, function (error) {
-            if (!error && usableCacheFile(destination)) { resolve(destination); return; }
-            reject(error || new Error("PDF_PREVIEW_NOT_CREATED"));
-          });
-        }).catch(quickLookFallback);
+        });
       });
+    }
+
+    function removeOwnedWorkDirectory(directory) {
+      if (path.dirname(directory) !== stillPreviewDirectory || path.basename(directory).charAt(0) !== ".") { return Promise.resolve(); }
+      return cacheCall("readdir", [directory]).then(function (names) {
+        return Promise.all(names.map(function (name) {
+          var candidate = path.join(directory, name);
+          return cacheCall("lstat", [candidate]).then(function (stat) {
+            if (stat.isDirectory()) { return; }
+            return cacheCall("unlink", [candidate]).then(function () { delete cacheRecords[candidate]; });
+          }).catch(function () {});
+        }));
+      }).then(function () { return cacheCall("rmdir", [directory]); }).catch(function () {});
     }
 
     function spriteFor(filePath) {
@@ -1108,7 +1341,7 @@
     }
 
     ensureDirectories();
-    scheduleCachePrune();
+    pruneCache().catch(function () {});
 
     return {
       cacheRoot: cacheRoot,
@@ -1128,6 +1361,10 @@
       cancelViewerJobs: cancelViewerJobs,
       cancelPreviewJob: cancelPreviewJob,
       prioritizeViewer: prioritizeViewer,
+      retainCacheFile: retainCacheFile,
+      releaseCacheFile: releaseCacheFile,
+      pruneCache: pruneCache,
+      cacheStats: cacheTotals,
       findBinary: findBinary
     };
   }

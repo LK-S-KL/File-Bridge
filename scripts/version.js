@@ -5,6 +5,7 @@ const projectRoot = path.resolve(__dirname, "..");
 const packagePath = path.join(projectRoot, "package.json");
 const manifestPath = path.join(projectRoot, "extension", "CSXS", "manifest.xml");
 const hostPath = path.join(projectRoot, "extension", "jsx", "host.jsx");
+const indexPath = path.join(projectRoot, "extension", "index.html");
 
 function fail(message) {
   console.error(message);
@@ -15,11 +16,13 @@ function readVersions() {
   const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
   const manifest = fs.readFileSync(manifestPath, "utf8");
   const host = fs.readFileSync(hostPath, "utf8");
+  const index = fs.readFileSync(indexPath, "utf8");
+  const panelMatch = index.match(/name="lkfb-version" content="([^"]+)"/);
   const bundleMatch = manifest.match(/ExtensionBundleVersion="([^"]+)"/);
   const extensionMatch = manifest.match(/<Extension Id="[^"]+" Version="([^"]+)"/);
   const hostMatch = host.match(/ns\.version\s*=\s*"([^"]+)"/);
 
-  if (!bundleMatch || !extensionMatch || !hostMatch) {
+  if (!bundleMatch || !extensionMatch || !hostMatch || !panelMatch) {
     fail("Unable to find every LK‘s File Bridge version field.");
   }
 
@@ -27,11 +30,13 @@ function readVersions() {
     packageJson,
     manifest,
     host,
+    index,
     values: {
       package: packageJson.version,
       bundle: bundleMatch[1],
       extension: extensionMatch[1],
-      host: hostMatch[1]
+      host: hostMatch[1],
+      panel: panelMatch[1]
     }
   };
 }
@@ -60,6 +65,7 @@ function setVersion(version) {
       .replace(/(<Extension Id="[^"]+" Version=")[^"]+("[^>]*>)/, `$1${version}$2`)
   );
   fs.writeFileSync(hostPath, current.host.replace(/ns\.version\s*=\s*"[^"]+"/, `ns.version = "${version}"`));
+  fs.writeFileSync(indexPath, current.index.replace(/name="lkfb-version" content="[^"]+"/, `name="lkfb-version" content="${version}"`));
   console.log(`Updated LK‘s File Bridge version to ${version}`);
   check();
 }

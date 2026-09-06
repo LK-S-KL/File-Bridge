@@ -281,3 +281,107 @@ test("removes a copied file when the source changes during packaging", async () 
     fs.rmSync(item.fixture, { recursive: true, force: true });
   }
 });
+
+test("cancelling a later file rolls back completed and partial copies but preserves existing destination files", async () => {
+  const item = makeFixture();
+  const destination = path.join(item.fixture, "cancel-mid-package");
+  const audio = path.join(item.rootB, "music.wav");
+  const video = path.join(item.rootA, "项目", "镜头", "used.mp4");
+  fs.mkdirSync(destination);
+  fs.writeFileSync(path.join(destination, "keep.txt"), "existing user file");
+  let aborted = false;
+  try {
+    await assert.rejects(createPackager().packageProject({
+      destination,
+      roots: [{ id: "a", path: item.rootA }, { id: "b", path: item.rootB }],
+      media: [{ path: audio, rootId: "b" }, { path: video, rootId: "a" }],
+      isCancelled: () => aborted,
+      onProgress: (event) => {
+        if (event.phase === "copy" && event.currentPath === video && event.bytesCompleted > 0) { aborted = true; }
+      }
+    }), (error) => {
+      assert.equal(error.code, "PACKAGING_CANCELLED");
+      assert.equal(error.recovery.complete, true);
+      assert.ok(error.recovery.removed.some((filePath) => filePath.endsWith("music.wav")));
+      return true;
+    });
+    assert.deepEqual(fs.readdirSync(destination), ["keep.txt"]);
+    assert.equal(fs.readFileSync(path.join(destination, "keep.txt"), "utf8"), "existing user file");
+    assert.equal(fs.existsSync(video), true);
+    assert.equal(fs.existsSync(audio), true);
+  } finally { fs.rmSync(item.fixture, { recursive: true, force: true }); }
+});
+
+test("cancelling at manifest creation removes only newly created nested package directories", async () => {
+  const item = makeFixture();
+  const destination = path.join(item.fixture, "cancel-manifest-package");
+  let aborted = false;
+  try {
+    await assert.rejects(createPackager().packageProject({
+      flatten: false,
+      destination,
+      roots: [{ id: "a", path: item.rootA }],
+      media: [{ path: path.join(item.rootA, "项目", "镜头", "used.mp4"), rootId: "a" }],
+      isCancelled: () => aborted,
+      onProgress: (event) => { if (event.phase === "manifest") { aborted = true; } }
+    }), (error) => {
+      assert.equal(error.code, "PACKAGING_CANCELLED");
+      assert.equal(error.recovery.complete, true);
+      return true;
+    });
+    assert.equal(fs.existsSync(destination), false);
+  } finally { fs.rmSync(item.fixture, { recursive: true, force: true }); }
+});
+
+test("cancellation reports rollback failures instead of hiding retained copies", async () => {
+  const item = makeFixture();
+  const destination = path.join(item.fixture, "cancel-retained-package");
+  let aborted = false;
+  const wrappedFs = Object.create(fs);
+  wrappedFs.unlink = (target, done) => done(Object.assign(new Error("permission denied"), { code: "EACCES" }));
+  const packager = packagerModule.create({ fs: wrappedFs, path, platform: process.platform });
+  try {
+    await assert.rejects(packager.packageProject({
+      destination,
+      roots: [{ id: "a", path: item.rootA }],
+      media: [{ path: path.join(item.rootA, "项目", "镜头", "used.mp4"), rootId: "a" }],
+      isCancelled: () => aborted,
+      onProgress: (event) => { if (event.phase === "manifest") { aborted = true; } }
+    }), (error) => {
+      assert.equal(error.code, "PACKAGING_CANCELLED");
+      assert.equal(error.recovery.complete, false);
+      assert.ok(error.recovery.retained.some((entry) => entry.path.endsWith("used.mp4") && entry.error.code === "EACCES"));
+      return true;
+    });
+    assert.equal(fs.existsSync(path.join(destination, "used.mp4")), true);
+  } finally { fs.rmSync(item.fixture, { recursive: true, force: true }); }
+});
+
+test("cancels a stalled read even when no more data events arrive", async () => {
+  const item = makeFixture();
+  const destination = path.join(item.fixture, "stalled-read-package");
+  const wrappedFs = Object.create(fs);
+  const { PassThrough } = require("node:stream");
+  let aborted = false;
+  let stalledStream;
+  wrappedFs.createReadStream = () => {
+    stalledStream = new PassThrough();
+    aborted = true;
+    return stalledStream;
+  };
+  const packager = packagerModule.create({ fs: wrappedFs, path, platform: process.platform });
+  try {
+    await assert.rejects(packager.packageProject({
+      destination,
+      roots: [{ id: "a", path: item.rootA }],
+      media: [{ path: path.join(item.rootA, "项目", "镜头", "used.mp4"), rootId: "a" }],
+      isCancelled: () => aborted
+    }), (error) => {
+      assert.equal(error.code, "PACKAGING_CANCELLED");
+      assert.equal(error.recovery.complete, true);
+      return true;
+    });
+    assert.equal(stalledStream.destroyed, true);
+    assert.equal(fs.existsSync(destination), false);
+  } finally { fs.rmSync(item.fixture, { recursive: true, force: true }); }
+});

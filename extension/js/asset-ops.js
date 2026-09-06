@@ -51,15 +51,24 @@
     var trashItem = runtime.trashItem || runFoundationTrash;
     var platform = runtime.platform || (typeof process !== "undefined" ? process.platform : "");
     var copyExclusiveFlag = fs.constants && typeof fs.constants.COPYFILE_EXCL === "number" ? fs.constants.COPYFILE_EXCL : 1;
+    var readTimeoutMs = Math.max(25, Number(runtime.readTimeoutMs) || 10000);
 
     function callFs(method, args) {
       return new Promise(function (resolve, reject) {
+        var settled = false;
+        var timer = null;
         var callback = function (error, value) {
+          if (settled) { return; }
+          settled = true;
+          if (timer) { clearTimeout(timer); }
           if (error) { reject(error); return; }
           resolve(value);
         };
+        if (method === "lstat" || method === "realpath") {
+          timer = setTimeout(function () { callback(makeError("SOURCE_TIMEOUT", "素材位置读取超时，请检查连接后重试。")); }, readTimeoutMs);
+        }
         try { fs[method].apply(fs, args.concat(callback)); }
-        catch (error) { reject(error); }
+        catch (error) { callback(error); }
       });
     }
 
@@ -68,6 +77,31 @@
     function mkdir(filePath) { return callFs("mkdir", [filePath]); }
     function rename(source, destination) { return callFs("rename", [source, destination]); }
     function copyFile(source, destination) { return callFs("copyFile", [source, destination, copyExclusiveFlag]); }
+
+    function sameFile(first, second) {
+      return first && second && first.isFile() && second.isFile() && !first.isSymbolicLink() && !second.isSymbolicLink() &&
+        first.ino && first.ino === second.ino && first.dev === second.dev && first.size === second.size &&
+        Math.abs(Number(first.mtimeMs) - Number(second.mtimeMs)) <= 1;
+    }
+
+    function rollbackCrossVolumeCopy(asset, targetPath, copiedStat, error) {
+      error.recovery = { sourcePath: asset.path, copiedPath: targetPath, rolledBack: false, sourceIntact: false, manualRecoveryRequired: true };
+      return Promise.all([lstat(asset.path), lstat(targetPath)]).then(function (values) {
+        error.recovery.sourceIntact = !!sameFile(asset.stat, values[0]);
+        if (!error.recovery.sourceIntact || !sameFile(copiedStat, values[1])) {
+          error.recovery.reason = "FILE_CHANGED";
+          return null;
+        }
+        // Only remove the copy created by this attempt after rechecking the source.
+        return callFs("unlink", [targetPath]).then(function () {
+          error.recovery.rolledBack = true;
+          error.recovery.manualRecoveryRequired = false;
+        });
+      }).catch(function (rollbackError) {
+        error.recovery.reason = String(rollbackError.code || "ROLLBACK_FAILED");
+        error.recovery.message = String(rollbackError.message || rollbackError);
+      }).then(function () { throw error; });
+    }
 
     function emit(onProgress, operation, phase, completed, total, extra) {
       var payload = {
@@ -414,10 +448,20 @@
               }, function (error) {
                 if (!error || error.code !== "EXDEV") { throw error; }
                 return copyFile(asset.path, targetPath).then(function () {
-                  return trashItem(asset.path).then(function (trashResult) {
-                    return confirmTrashed(asset.path, trashResult);
-                  }).then(function () {
-                    return { sourcePath: asset.path, path: targetPath, name: path.basename(targetPath), changed: true, copiedAcrossVolumes: true };
+                  return lstat(targetPath).then(function (copiedStat) {
+                    return lstat(asset.path).then(function (sourceStat) {
+                      if (!sameFile(asset.stat, sourceStat)) { throw makeError("SOURCE_CHANGED", "文件在复制时发生变化，已保留源文件及副本供检查。"); }
+                      return trashItem(asset.path);
+                    }).then(function (trashResult) {
+                      return confirmTrashed(asset.path, trashResult);
+                    }).then(function () {
+                      return { sourcePath: asset.path, path: targetPath, name: path.basename(targetPath), changed: true, copiedAcrossVolumes: true };
+                    }).catch(function (trashError) {
+                      return rollbackCrossVolumeCopy(asset, targetPath, copiedStat, trashError);
+                    });
+                  }, function (inspectionError) {
+                    inspectionError.recovery = { sourcePath: asset.path, copiedPath: targetPath, rolledBack: false, sourceIntact: false, manualRecoveryRequired: true, reason: "COPY_INSPECTION_FAILED" };
+                    throw inspectionError;
                   });
                 });
               });
@@ -436,9 +480,9 @@
       });
     }
 
-    function renameFolder(options) {
+    function renameEntry(options, expectedType) {
       var settings = options || {};
-      var operation = "rename-folder";
+      var operation = expectedType === "file" ? "rename-asset" : "rename-folder";
       var newName;
       var destination;
       emit(settings.onProgress, operation, "start", 0, 1);
@@ -447,10 +491,10 @@
         emit(settings.onProgress, operation, "error", 0, 1, { error: error, path: settings.folder && settings.folder.path });
         return Promise.reject(error);
       }
-      return validateExisting(settings.roots, settings.folder, "directory", false).then(function (folder) {
+      return validateExisting(settings.roots, settings.folder, expectedType, false).then(function (folder) {
         destination = path.join(path.dirname(folder.path), newName);
         if (!isInside(path, destination, folder.root.resolved, false)) {
-          throw makeError("PATH_OUTSIDE_ROOT", "重命名后的文件夹必须位于已授权的素材位置内。");
+          throw makeError("PATH_OUTSIDE_ROOT", "重命名后的项目必须位于已授权的素材位置内。");
         }
         if (destination === folder.path) {
           return { path: folder.path, oldPath: folder.path, name: newName, changed: false };
@@ -458,14 +502,14 @@
         return pathExists(destination).then(function (exists) {
           if (exists) {
             if (path.basename(folder.path).toLocaleLowerCase() !== newName.toLocaleLowerCase()) {
-              throw makeError("DESTINATION_EXISTS", "同一位置已存在同名文件夹。");
+              throw makeError("DESTINATION_EXISTS", "同一位置已存在同名项目。");
             }
             return Promise.all([lstat(destination), realpath(destination)]).then(function (values) {
               var destinationStat = values[0];
               var destinationReal = values[1];
               var sameInode = folder.stat.ino && destinationStat.ino && folder.stat.ino === destinationStat.ino && folder.stat.dev === destinationStat.dev;
               if (!sameInode && destinationReal !== folder.real) {
-                throw makeError("DESTINATION_EXISTS", "同一位置已存在同名文件夹。");
+                throw makeError("DESTINATION_EXISTS", "同一位置已存在同名项目。");
               }
               return rename(folder.path, destination).then(function () {
                 return { path: destination, oldPath: folder.path, name: newName, changed: true };
@@ -483,6 +527,21 @@
       }).catch(function (error) {
         return progressFailure(settings.onProgress, operation, 0, 1, error, { path: destination || (settings.folder && settings.folder.path) });
       });
+    }
+
+    function renameFolder(options) { return renameEntry(options, "directory"); }
+
+    function renameAsset(options) {
+      var settings = options || {};
+      var asset = settings.asset || {};
+      var name;
+      try {
+        name = validateLeafName(settings.newName);
+        if (path.extname(String(asset.path || "")).toLowerCase() !== path.extname(name).toLowerCase()) {
+          throw makeError("EXTENSION_CHANGED", "为避免格式误判，当前版本不允许更改扩展名。");
+        }
+      } catch (error) { return Promise.reject(error); }
+      return renameEntry({ roots: settings.roots, folder: asset, newName: name, onProgress: settings.onProgress }, "file");
     }
 
     function moveToTrash(options) {
@@ -525,7 +584,11 @@
         return results;
       }).catch(function (error) {
         error.partialResults = results;
-        return progressFailure(settings.onProgress, operation, results.length, total, error, { results: results });
+        error.remainingTargets = targets.filter(function (target) {
+          if (!target || typeof target.path !== "string") { return true; }
+          return !results.some(function (result) { return path.resolve(result.sourcePath) === path.resolve(target.path); });
+        });
+        return progressFailure(settings.onProgress, operation, results.length, total, error, { results: results, remainingTargets: error.remainingTargets });
       });
     }
 
@@ -535,6 +598,7 @@
       createCopies: createCopies,
       moveAssetsToFolder: moveAssetsToFolder,
       renameFolder: renameFolder,
+      renameAsset: renameAsset,
       moveToTrash: moveToTrash
     };
   }

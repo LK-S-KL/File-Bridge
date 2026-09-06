@@ -286,3 +286,144 @@ test("rejects a configured root that is itself a symbolic link", async (t) => {
     fs.rmSync(fixture.base, { recursive: true, force: true });
   }
 });
+
+test("cross-volume trash failure rolls back only the created destination copy", async () => {
+  const fixture = createFixture("lkfb-exdev-rollback-");
+  const source = path.join(fixture.root, "clip.mp4");
+  const destination = path.join(fixture.root, "destination");
+  fs.writeFileSync(source, "source-media");
+  fs.mkdirSync(destination);
+  fs.writeFileSync(path.join(destination, "clip.mp4"), "existing-media");
+  const wrappedFs = guardedFs();
+  wrappedFs.rename = (from, to, done) => done(Object.assign(new Error("cross volume"), { code: "EXDEV" }));
+  const ops = assetOpsModule.create({ fs: wrappedFs, path, trashItem: async () => { throw Object.assign(new Error("trash denied"), { code: "EACCES" }); } });
+  try {
+    await assert.rejects(ops.moveAssetsToFolder({ roots: fixture.roots, destinationRootId: "root", destinationPath: destination, assets: [descriptor(fixture.root, source)] }), (error) => {
+      assert.equal(error.recovery.rolledBack, true);
+      assert.equal(error.recovery.sourceIntact, true);
+      assert.equal(error.recovery.manualRecoveryRequired, false);
+      return true;
+    });
+    assert.deepEqual(fs.readdirSync(destination), ["clip.mp4"]);
+    assert.equal(fs.readFileSync(source, "utf8"), "source-media");
+    assert.equal(fs.readFileSync(path.join(destination, "clip.mp4"), "utf8"), "existing-media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("cross-volume rollback failure reports a retained copy for recovery", async () => {
+  const fixture = createFixture("lkfb-exdev-retained-");
+  const source = path.join(fixture.root, "clip.mp4");
+  const destination = path.join(fixture.root, "destination");
+  fs.writeFileSync(source, "source-media");
+  fs.mkdirSync(destination);
+  const wrappedFs = guardedFs();
+  wrappedFs.rename = (from, to, done) => done(Object.assign(new Error("cross volume"), { code: "EXDEV" }));
+  wrappedFs.unlink = (target, done) => done(Object.assign(new Error("permission denied"), { code: "EACCES" }));
+  const ops = assetOpsModule.create({ fs: wrappedFs, path, trashItem: async () => { throw new Error("trash denied"); } });
+  try {
+    await assert.rejects(ops.moveAssetsToFolder({ roots: fixture.roots, destinationRootId: "root", destinationPath: destination, assets: [descriptor(fixture.root, source)] }), (error) => {
+      assert.equal(error.recovery.rolledBack, false);
+      assert.equal(error.recovery.manualRecoveryRequired, true);
+      assert.equal(error.recovery.copiedPath, path.join(destination, "clip.mp4"));
+      assert.equal(error.recovery.reason, "EACCES");
+      return true;
+    });
+    assert.equal(fs.readFileSync(source, "utf8"), "source-media");
+    assert.equal(fs.readFileSync(path.join(destination, "clip.mp4"), "utf8"), "source-media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("cross-volume failure preserves the destination when the source is no longer available", async () => {
+  const fixture = createFixture("lkfb-exdev-source-missing-");
+  const source = path.join(fixture.root, "clip.mp4");
+  const destination = path.join(fixture.root, "destination");
+  fs.writeFileSync(source, "source-media");
+  fs.mkdirSync(destination);
+  const wrappedFs = guardedFs();
+  wrappedFs.rename = (from, to, done) => done(Object.assign(new Error("cross volume"), { code: "EXDEV" }));
+  const ops = assetOpsModule.create({ fs: wrappedFs, path, trashItem: async (target) => {
+    await fs.promises.rename(target, path.join(fixture.trash, "clip.mp4"));
+    throw new Error("adapter response lost");
+  } });
+  try {
+    await assert.rejects(ops.moveAssetsToFolder({ roots: fixture.roots, destinationRootId: "root", destinationPath: destination, assets: [descriptor(fixture.root, source)] }), (error) => {
+      assert.equal(error.recovery.sourceIntact, false);
+      assert.equal(error.recovery.manualRecoveryRequired, true);
+      return true;
+    });
+    assert.equal(fs.readFileSync(path.join(destination, "clip.mp4"), "utf8"), "source-media");
+    assert.equal(fs.readFileSync(path.join(fixture.trash, "clip.mp4"), "utf8"), "source-media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("partial trash failures expose successful and remaining targets consistently", async () => {
+  const fixture = createFixture("lkfb-trash-partial-");
+  const sources = ["a.mp4", "b.mp4", "c.mp4"].map((name) => path.join(fixture.root, name));
+  sources.forEach((source) => fs.writeFileSync(source, "media"));
+  const progress = [];
+  const trash = testTrash(fixture);
+  const ops = assetOpsModule.create({ fs: guardedFs(), path, trashItem: async (source) => {
+    if (source === sources[1]) { throw Object.assign(new Error("denied"), { code: "EACCES" }); }
+    return trash(source);
+  } });
+  try {
+    await assert.rejects(ops.moveToTrash({ roots: fixture.roots, targets: sources.map((source) => descriptor(fixture.root, source)), onProgress: (event) => progress.push(event) }), (error) => {
+      assert.deepEqual(error.partialResults.map((entry) => entry.sourcePath), [sources[0]]);
+      assert.deepEqual(error.remainingTargets.map((entry) => entry.path), sources.slice(1));
+      assert.deepEqual(progress.at(-1).remainingTargets, error.remainingTargets);
+      return true;
+    });
+    assert.equal(fs.existsSync(sources[0]), false);
+    assert.equal(fs.existsSync(sources[1]), true);
+    assert.equal(fs.existsSync(sources[2]), true);
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("renames media asynchronously with extension and collision guards", async () => {
+  const fixture = createFixture("lkfb-async-rename-");
+  const source = path.join(fixture.root, "Original.mp4");
+  fs.writeFileSync(source, "media");
+  fs.writeFileSync(path.join(fixture.root, "existing.mp4"), "keep");
+  const ops = assetOpsModule.create({ fs: guardedFs(), path });
+  try {
+    const asset = descriptor(fixture.root, source);
+    await assert.rejects(ops.renameAsset({ roots: fixture.roots, asset, newName: "New.mov" }), { code: "EXTENSION_CHANGED" });
+    await assert.rejects(ops.renameAsset({ roots: fixture.roots, asset, newName: "existing.mp4" }), { code: "DESTINATION_EXISTS" });
+    const renamed = await ops.renameAsset({ roots: fixture.roots, asset, newName: "Renamed.mp4" });
+    assert.equal(renamed.oldPath, source);
+    assert.equal(fs.readFileSync(renamed.path, "utf8"), "media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("offline validation times out without scheduling a late rename", async () => {
+  const fixture = createFixture("lkfb-rename-read-timeout-");
+  const source = path.join(fixture.root, "Original.mp4");
+  fs.writeFileSync(source, "media");
+  const wrappedFs = guardedFs();
+  let pendingCallback;
+  let renameCalls = 0;
+  wrappedFs.lstat = (target, done) => { pendingCallback = done; };
+  wrappedFs.rename = () => { renameCalls += 1; };
+  const ops = assetOpsModule.create({ fs: wrappedFs, path, readTimeoutMs: 25 });
+  try {
+    await assert.rejects(ops.renameAsset({ roots: fixture.roots, asset: descriptor(fixture.root, source), newName: "Renamed.mp4" }), { code: "SOURCE_TIMEOUT" });
+    pendingCallback(null, fs.lstatSync(fixture.root));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(renameCalls, 0);
+    assert.equal(fs.readFileSync(source, "utf8"), "media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});
+
+test("a slow mutation is awaited rather than falsely reported as timed out", async () => {
+  const fixture = createFixture("lkfb-rename-mutation-wait-");
+  const source = path.join(fixture.root, "Original.mp4");
+  fs.writeFileSync(source, "media");
+  const wrappedFs = guardedFs();
+  wrappedFs.rename = (from, to, done) => { setTimeout(() => fs.rename(from, to, done), 60); };
+  const ops = assetOpsModule.create({ fs: wrappedFs, path, readTimeoutMs: 25 });
+  try {
+    const result = await ops.renameAsset({ roots: fixture.roots, asset: descriptor(fixture.root, source), newName: "Renamed.mp4" });
+    assert.equal(result.changed, true);
+    assert.equal(fs.readFileSync(result.path, "utf8"), "media");
+  } finally { fs.rmSync(fixture.base, { recursive: true, force: true }); }
+});

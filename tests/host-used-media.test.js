@@ -35,7 +35,7 @@ function sequence(name, videoTracks, audioTracks) {
   };
 }
 
-function loadHost(sequences, withNativeJson) {
+function loadHost(sequences, withNativeJson, clock = Date) {
   function ExtendScriptFile(value) {
     this.fsName = String(value).replace(/\\/g, "/");
     this.name = path.basename(this.fsName);
@@ -69,6 +69,7 @@ function loadHost(sequences, withNativeJson) {
     Array,
     Object
   };
+  context.Date = clock;
   vm.createContext(context);
   vm.runInContext(hostSource, context, { filename: "host.jsx" });
   return context.$.global.SeekBridge;
@@ -134,4 +135,16 @@ test("host API opts in plugin-generated screenshots outside configured media roo
   assert.equal(result.media[0].pluginGenerated, true);
   assert.equal(result.media[0].sourceKind, "screenshot");
   assert.equal(result.media[0].rootId, "capture");
+});
+
+test("large Premiere inventory stops at the host time budget without returning a partial success", () => {
+  let now = 0;
+  function Clock() { this.getTime = () => { now += 2600; return now; }; }
+  const host = loadHost([
+    sequence("timeout", [track([clip(projectItem("/Volumes/media/a.mov", false))])], [])
+  ], true, Clock);
+  const result = JSON.parse(host.listUsedPremiereMedia('{"roots":[{"path":"/Volumes/media"}]}'));
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "PROJECT_SCAN_TIMEOUT");
+  assert.equal(result.media, undefined);
 });

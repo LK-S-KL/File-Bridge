@@ -46,7 +46,7 @@ test("plugin folders render as a collapsible hierarchy with a minimal back contr
   assert.match(css, /\.folder-scope-bar\s*\{/);
   assert.match(css, /\.folder-empty-icon\s*\{/);
   assert.match(main, /parentId\s*=\s*pluginFolderParentId\(pluginFolder\)/);
-  assert.match(main, /persistPluginFolders\(\);\s*rebuildAssetMap\(\);/);
+  assert.match(main, /if \(!applyPluginFolderResult\(result\)\) \{ return false; \}\s*rebuildAssetMap\(\);/);
   assert.match(main, /item\.type\s*===\s*"audio"[\s\S]*?waveformFor\(item\.path\)/);
 });
 
@@ -126,6 +126,6 @@ test("player 4.5 follows the supplied five-control layout", () => {
   assert.match(playerCss, /@media \(max-width:\s*560px\)[\s\S]*min-height:\s*176px[\s\S]*\.transport-right\s*\{[^}]*width:\s*312px/s);
   assert.match(main, /function\s+chooseViewerSpeed\s*\(event\)/);
   assert.match(main, /media\.playbackRate\s*=\s*viewerState\.playbackRate/);
-  assert.match(main, /elements\.timelineTrackWrap\.style\.setProperty\("--viewer-buffered"/);
+  assert.match(main, /elements\.timelineTrackWrap\.style\.setProperty\("--viewer-buffered-end"/);
   assert.match(main, /formatViewerTimecode\(media\.currentTime\) \+ " \/ "[\s\S]*formatViewerTimecode\(duration\)/);
 });

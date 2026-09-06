@@ -497,11 +497,13 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var child;
         var candidatePath;
         var i;
+        var deadline = new Date().getTime() + 5000;
+        var inspected = 0;
 
         try {
             var fastMatches = rootItem.findItemsMatchingMediaPath(mediaPath, 1);
-            if (fastMatches && fastMatches.numItems > 0) {
-                return fastMatches[0];
+            if (pproCollectionCount(fastMatches, "length") > 0 || pproCollectionCount(fastMatches, "numItems") > 0) {
+                return pproCollectionItem(fastMatches, 0);
             }
         } catch (ignoreFastFindError) {}
 
@@ -510,6 +512,10 @@ $.global.SeekBridge = $.global.SeekBridge || {};
             children = current.children;
             count = children ? children.numItems : 0;
             for (i = 0; i < count; i += 1) {
+                inspected += 1;
+                if (inspected > 100000 || new Date().getTime() > deadline) {
+                    throw makeError("PROJECT_LOOKUP_TIMEOUT", "工程素材查找耗时过长，操作已停止，请在 Premiere 项目面板中确认该素材。");
+                }
                 child = children[i];
                 if (pproIsBin(child)) {
                     stack.push(child);
@@ -553,9 +559,33 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var index = pproLabelIndex(value);
         if (!projectItem || index < 0) { return false; }
         try {
-            if (typeof projectItem.setColorLabel === "function") { projectItem.setColorLabel(index); return true; }
+            if (typeof projectItem.setColorLabel === "function") { return projectItem.setColorLabel(index) === 0; }
         } catch (ignoreSetColorLabelError) {}
-        try { projectItem.label = index; return true; } catch (ignoreLabelPropertyError) { return false; }
+        return false;
+    }
+
+    function pproInsertionTrack(tracks, kind) {
+        var count = pproCollectionCount(tracks, "numTracks");
+        var fallback = -1;
+        var targeted = false;
+        var targetLocked = false;
+        var track;
+        var locked;
+        var i;
+        for (i = 0; i < count; i += 1) {
+            track = pproCollectionItem(tracks, i);
+            if (!track) { continue; }
+            try { locked = typeof track.isLocked === "function" ? !!track.isLocked() : track.locked === true; }
+            catch (lockError) { throw makeError("TRACK_STATE_UNAVAILABLE", "无法读取目标轨道状态，请在 Premiere 中确认轨道可用。"); }
+            try { targeted = typeof track.isTargeted === "function" && !!track.isTargeted(); }
+            catch (ignoreTargetError) { targeted = false; }
+            if (targeted && !locked) { return i; }
+            if (targeted && locked) { targetLocked = true; }
+            if (!locked && fallback < 0) { fallback = i; }
+        }
+        if (targetLocked) { throw makeError("TARGET_TRACK_LOCKED", "当前目标" + kind + "轨已锁定，请解锁或选择其他目标轨。"); }
+        if (fallback < 0) { throw makeError("NO_USABLE_TRACK", "没有可用的" + kind + "轨道。"); }
+        return fallback;
     }
 
     function pproImport(payload, placeAtPlayhead) {
@@ -565,8 +595,11 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var imported;
         var insertResult;
         var insertTime;
-        var videoTrackIndex = 0;
-        var audioTrackIndex = 0;
+        var videoTrackIndex = -1;
+        var audioTrackIndex = -1;
+        var audioOnly = /\.(wav|aif|aiff|mp3|aac|m4a|flac|ogg|opus|wma)$/i.test(String(payload.path || ""));
+        var stillImage = /\.(png|jpe?g|gif|webp|tiff?|bmp|psd|ai|eps)$/i.test(String(payload.path || ""));
+        var labelApplied = false;
 
         if (!project || !project.rootItem) {
             throw makeError("NO_PROJECT", "Open or create a Premiere project first.");
@@ -579,6 +612,8 @@ $.global.SeekBridge = $.global.SeekBridge || {};
             if (sequence.videoTracks.numTracks < 1 && sequence.audioTracks.numTracks < 1) {
                 throw makeError("NO_TRACKS", "The active sequence has no usable tracks.");
             }
+            if (!audioOnly) { videoTrackIndex = pproInsertionTrack(sequence.videoTracks, "视频"); }
+            if (audioOnly || (!stillImage && sequence.audioTracks.numTracks > 0)) { audioTrackIndex = pproInsertionTrack(sequence.audioTracks, "音频"); }
         }
         mediaFile = requireMediaFile(payload.path);
         /* Screenshots are ordinary PNG files and should appear directly in
@@ -586,7 +621,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
            flag is preferred; the filename check keeps older panel builds
            compatible with the new capture naming convention. */
         imported = pproEnsureImported(project, mediaFile, payload.directImport === true || /_Screenshot_\d{8}-\d{4}(?:-\d+)?\.png$/i.test(String(mediaFile.name || "")));
-        if (payload.colorLabel) { pproSetColorLabel(imported.item, payload.colorLabel); }
+        if (payload.colorLabel) { labelApplied = pproSetColorLabel(imported.item, payload.colorLabel); }
 
         if (placeAtPlayhead) {
             insertTime = sequence.getPlayerPosition();
@@ -597,10 +632,10 @@ $.global.SeekBridge = $.global.SeekBridge || {};
                 insertTime = new Time();
                 insertTime.ticks = String(sequence.end || "0");
             }
-            if (sequence.videoTracks.numTracks < 1) {
-                insertResult = sequence.audioTracks[0].insertClip(imported.item, insertTime.ticks);
-            } else if (sequence.audioTracks.numTracks < 1) {
-                insertResult = sequence.videoTracks[0].insertClip(imported.item, insertTime.ticks);
+            if (audioOnly) {
+                insertResult = sequence.audioTracks[audioTrackIndex].insertClip(imported.item, insertTime.ticks, -1, audioTrackIndex);
+            } else if (audioTrackIndex < 0) {
+                insertResult = sequence.videoTracks[videoTrackIndex].insertClip(imported.item, insertTime.ticks, videoTrackIndex, -1);
             } else {
                 insertResult = sequence.insertClip(imported.item, insertTime, videoTrackIndex, audioTrackIndex);
             }
@@ -614,6 +649,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
             code: "OK",
             itemName: String(imported.item.name || mediaFile.name),
             imported: imported.imported,
+            labelApplied: labelApplied,
             placed: placeAtPlayhead,
             path: mediaFile.fsName
         };
@@ -645,35 +681,6 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         return selected;
     }
 
-    function pproFindLumetriComponent(clip) {
-        var components;
-        var i;
-        var component;
-        try { components = clip.components; } catch (ignoreComponentsError) { return null; }
-        for (i = 0; components && i < components.numItems; i += 1) {
-            component = components[i];
-            if (component && /lumetri/i.test(String(component.displayName || component.name || ""))) { return component; }
-        }
-        return null;
-    }
-
-    function pproSetLumetriInput(component, lutPath) {
-        var properties;
-        var i;
-        var property;
-        var name;
-        if (!component) { return false; }
-        try { properties = component.properties; } catch (ignorePropertiesError) { return false; }
-        for (i = 0; properties && i < properties.numItems; i += 1) {
-            property = properties[i];
-            name = String(property && (property.displayName || property.name) || "");
-            if (/input\s*lut|lut/i.test(name) && property && typeof property.setValue === "function") {
-                try { property.setValue(lutPath, true); return true; } catch (ignoreSetValueError) {}
-            }
-        }
-        return false;
-    }
-
     function pproSelectedVideoCount() {
         var sequence = app.project && app.project.activeSequence;
         return sequence ? pproSelectedVideoClips(sequence).length : 0;
@@ -683,14 +690,6 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var project = app.project;
         var sequence;
         var selected;
-        var qeProject;
-        var qeSequence;
-        var effect;
-        var applied = 0;
-        var i;
-        var qeTrack;
-        var qeClip;
-        var component;
         if (!project || !project.rootItem) { throw makeError("NO_PROJECT", "Open a Premiere project first."); }
         sequence = project.activeSequence;
         if (!sequence) { throw makeError("NO_ACTIVE_SEQUENCE", "Open a Premiere sequence first."); }
@@ -698,26 +697,9 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         if (!new File(payload.path).exists) { throw makeError("FILE_NOT_FOUND", "The LUT file is unavailable."); }
         selected = pproSelectedVideoClips(sequence);
         if (!selected.length) { throw makeError("NO_SELECTED_VIDEO", "当前时间线未选中"); }
-        try {
-            qeProject = qeProject || (typeof qe !== "undefined" ? qe : null);
-            if (!qeProject && typeof app.enableQE === "function") { app.enableQE(); qeProject = qe; }
-            qeSequence = qeProject && qeProject.project ? qeProject.project.getActiveSequence() : null;
-            effect = qeProject && qeProject.project && qeProject.project.getVideoEffectByName ? qeProject.project.getVideoEffectByName("Lumetri Color") : null;
-            if (!qeSequence || !effect) { throw makeError("LUT_UNSUPPORTED", "当前 Premiere 版本无法调用 Lumetri Color。"); }
-            for (i = 0; i < selected.length; i += 1) {
-                qeTrack = qeSequence.getVideoTrackAt(selected[i].trackIndex);
-                qeClip = qeTrack && qeTrack.getItemAt(selected[i].clipIndex);
-                if (!qeClip || typeof qeClip.addVideoEffect !== "function") { continue; }
-                try { qeClip.addVideoEffect(effect); } catch (ignoreAddEffectError) {}
-                component = pproFindLumetriComponent(selected[i].clip);
-                if (pproSetLumetriInput(component, payload.path)) { applied += 1; }
-            }
-        } catch (error) {
-            if (error && error.seekCode) { throw error; }
-            throw makeError("LUT_UNSUPPORTED", error.message || String(error));
-        }
-        if (!applied) { throw makeError("LUT_UNSUPPORTED", "Lumetri 未提供可写入的 Input LUT 属性。"); }
-        return { ok: true, code: "OK", applied: applied, selected: selected.length, path: payload.path };
+        /* CEP exposes no documented transaction that both adds Lumetri and
+           rolls it back when Input LUT is unavailable. Never probe by writing. */
+        throw makeError("LUT_UNSUPPORTED", "当前宿主不支持可安全回滚的 LUT 写入。请在 Premiere 的 Lumetri 颜色中选择此 LUT；工程未修改。");
     }
 
     function pproCollectionCount(collection, preferredProperty) {
@@ -809,12 +791,16 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var clipIndex;
 
         for (trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+            if (new Date().getTime() > counters.deadline) { throw makeError("PROJECT_SCAN_TIMEOUT", "工程清单读取超时，未开始复制素材。"); }
             track = pproCollectionItem(tracks, trackIndex);
             if (!track || !track.clips) {
                 continue;
             }
             clipCount = pproCollectionCount(track.clips, "numItems");
             for (clipIndex = 0; clipIndex < clipCount; clipIndex += 1) {
+                if (counters.trackItems >= 100000 || new Date().getTime() > counters.deadline) {
+                    throw makeError("PROJECT_SCAN_TIMEOUT", "工程清单过大或读取超时，未开始复制素材。");
+                }
                 clip = pproCollectionItem(track.clips, clipIndex);
                 counters.trackItems += 1;
                 projectItem = null;
@@ -885,7 +871,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         var sequenceName;
         var mediaByPath = {};
         var media = [];
-        var counters = { trackItems: 0, withoutMediaPath: 0, outOfScope: 0 };
+        var counters = { trackItems: 0, withoutMediaPath: 0, outOfScope: 0, deadline: new Date().getTime() + 5000 };
         var offlineCount = 0;
         var i;
 
@@ -895,6 +881,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         sequences = project.sequences;
         sequenceCount = pproCollectionCount(sequences, "numSequences");
         for (i = 0; i < sequenceCount; i += 1) {
+            if (new Date().getTime() > counters.deadline) { throw makeError("PROJECT_SCAN_TIMEOUT", "工程清单读取超时，未开始复制素材。"); }
             sequence = pproCollectionItem(sequences, i);
             if (!sequence) {
                 continue;
@@ -1040,7 +1027,10 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.6.6";
+    ns.version = "0.6.7";
+    ns.getCapabilities = function () {
+        return toJson({ ok: true, version: ns.version, lutApplication: false, lutReason: "当前宿主不支持可安全回滚的 LUT 写入" });
+    };
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };
