@@ -13,7 +13,7 @@
       <header class="topbar">
         <span id="hostLabel" class="sr-only">本地素材桥</span>
         <div class="utility-actions">
-          <button id="locationsToolbarButton" class="utility-source-button" type="button" title="素材位置" data-hint="素材位置" aria-label="打开素材位置" aria-haspopup="true" aria-expanded="false"><span class="icon-folder" aria-hidden="true"></span><span class="utility-source-label">素材位置</span><span class="icon-chevron-down" aria-hidden="true"></span></button>
+          <button id="locationsToolbarButton" class="utility-source-button" type="button" title="管理素材来源" data-hint="管理素材来源" aria-label="管理素材来源" aria-haspopup="true" aria-expanded="false"><span class="icon-folder" aria-hidden="true"></span></button>
         </div>
       </header>
 
@@ -80,8 +80,7 @@
           <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
           <div id="operationProgress" class="operation-progress" role="status" aria-live="polite" hidden><span id="operationProgressLabel"></span><div><i id="operationProgressBar"></i></div></div>
           <div id="folderScopeBar" class="folder-scope-bar" hidden>
-            <button id="folderBackButton" class="folder-scope-back" type="button" title="返回上一级" aria-label="返回上一级"><span class="icon-up" aria-hidden="true"></span><span>返回</span></button>
-            <div class="folder-scope-copy"><span>当前文件夹</span><strong id="folderScopeLabel"></strong></div>
+            <button id="folderBackButton" class="folder-scope-back" type="button" title="返回上一级" aria-label="返回上一级">返回</button>
           </div>
           <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
 
@@ -105,12 +104,7 @@
     </div>
 
     <div id="locationsPopover" class="popover locations-popover" hidden>
-      <div class="popover-heading"><div class="locations-heading-actions"><button id="locationsBackButton" class="icon-button" type="button" title="返回上一层" aria-label="返回上一层" hidden><span class="icon-up" aria-hidden="true"></span></button><strong>素材位置</strong></div><div class="locations-heading-actions"><button id="toggleAllRootsButton" class="text-button" type="button">全选</button><button id="closeLocationsPopover" class="icon-button" type="button" title="关闭" aria-label="关闭素材位置">&#215;</button></div></div>
-      <div class="source-menu-actions">
-        <button id="openLocationsSettingsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-settings" aria-hidden="true"></span><span>设置素材位置</span></button>
-        <button id="createFolderFromLocationsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-plus" aria-hidden="true"></span><span>新建文件夹</span></button>
-        <button id="uploadFolderFromLocationsButton" class="source-menu-action" type="button"><span class="ui-icon" data-icon="folder-upload" aria-hidden="true"></span><span>上传文件夹</span></button>
-      </div>
+      <div class="popover-heading locations-popover-actions"><div class="locations-heading-actions"><button id="locationsBackButton" class="icon-button" type="button" title="返回上一层" aria-label="返回上一层" hidden><span class="icon-up" aria-hidden="true"></span></button><strong class="sr-only">素材来源列表</strong></div><div class="locations-heading-actions"><button id="toggleAllRootsButton" class="text-button" type="button">全选</button><button id="closeLocationsPopover" class="icon-button" type="button" title="关闭" aria-label="关闭素材来源">&#215;</button></div></div>
       <p class="popover-hint">勾选一组或多组位置；未勾选时不显示素材。</p>
       <div id="locationsList" class="locations-list"></div>
       <div class="location-actions"><button id="addFolderFromPopover" class="menu-action" type="button">+ 添加素材位置</button></div>
@@ -119,6 +113,7 @@
     <div id="resultActionsPopover" class="popover result-actions-popover" hidden>
       <button id="createFolderFromResultsButton" class="menu-action" type="button">新建文件夹</button>
       <button id="uploadFilesButton" class="menu-action" type="button">上传文件</button>
+      <button id="pasteAssetsFromResultsButton" class="menu-action" type="button" disabled>粘贴</button>
     </div>
 
     <div id="toolbarSearchPopover" class="toolbar-search" hidden></div>
@@ -143,6 +138,11 @@
       <div id="insertSubmenuRow" class="submenu-row"><button type="button">插入到 <span>&#8250;</span></button><div class="context-submenu"><button type="button" data-command="insert" data-position="current">当前时间</button><button type="button" data-command="insert" data-position="start">首帧</button><button type="button" data-command="insert" data-position="end">尾帧</button></div></div>
       <button id="contextAePlaceButton" type="button" data-command="insert" data-position="current" hidden>加入当前合成</button>
       <button class="info-command" type="button" data-command="info">文件信息</button>
+      <div class="menu-separator"></div>
+      <button id="copyAssetsButton" type="button" data-command="copy-assets">复制</button>
+      <button id="cutAssetsButton" type="button" data-command="cut-assets">剪切</button>
+      <button id="pasteAssetsButton" type="button" data-command="paste-assets" disabled>粘贴</button>
+      <div class="menu-separator"></div>
       <button type="button" data-command="pin">置顶</button>
       <button type="button" data-command="favorite">收藏</button>
       <div id="transcodeMenu" class="submenu-row transcode-menu"><button type="button">文件转码 <span>&#8250;</span></button><div class="context-submenu"><button type="button" data-command="transcode" data-profile="1080">1080p</button><button type="button" data-command="transcode" data-profile="720">720p</button><button type="button" data-command="transcode" data-profile="360">360p</button></div></div>
@@ -221,6 +221,7 @@
     <script src="js/lut-tools.js"></script>
     <script src="js/timecode.js"></script>
     <script src="js/state-store.js"></script>
+    <script src="js/plugin-folder-ops.js"></script>
     <script src="js/file-ops.js"></script>
     <script src="js/asset-ops.js"></script>
     <script src="js/project-packager.js"></script>

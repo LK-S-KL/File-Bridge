@@ -16,11 +16,12 @@ const fileOpsPath = path.join(extensionRoot, "js", "file-ops.js");
 const assetOpsPath = path.join(extensionRoot, "js", "asset-ops.js");
 const projectPackagerPath = path.join(extensionRoot, "js", "project-packager.js");
 const interactionToolsPath = path.join(extensionRoot, "js", "interaction-tools.js");
+const pluginFolderOpsPath = path.join(extensionRoot, "js", "plugin-folder-ops.js");
 const hostPath = path.join(extensionRoot, "jsx", "host.jsx");
 const manifestPath = path.join(extensionRoot, "CSXS", "manifest.xml");
 const debugPath = path.join(extensionRoot, ".debug");
 
-for (const sourcePath of [mainPath, libraryPath, mediaToolsPath, lutToolsPath, timecodePath, stateStorePath, fileOpsPath, assetOpsPath, projectPackagerPath, interactionToolsPath, hostPath]) {
+for (const sourcePath of [mainPath, libraryPath, mediaToolsPath, lutToolsPath, timecodePath, stateStorePath, fileOpsPath, assetOpsPath, projectPackagerPath, interactionToolsPath, pluginFolderOpsPath, hostPath]) {
   const source = fs.readFileSync(sourcePath, "utf8");
   new vm.Script(source, { filename: sourcePath });
 }
@@ -43,6 +44,7 @@ const fileOpsSource = fs.readFileSync(fileOpsPath, "utf8");
 const assetOpsSource = fs.readFileSync(assetOpsPath, "utf8");
 const projectPackagerSource = fs.readFileSync(projectPackagerPath, "utf8");
 const hostSource = fs.readFileSync(hostPath, "utf8");
+const pluginFolderOpsSource = fs.readFileSync(pluginFolderOpsPath, "utf8");
 assert.equal(/\b(unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|truncate|truncateSync)\b/.test(mainSource), false, "Source file actions must never permanently delete or truncate media");
 assert.equal(/\b(unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|truncate|truncateSync)\b/.test(fileOpsSource), false, "File operations must never permanently delete or truncate media");
 assert.match(fileOpsSource, /trashItemAtURLResultingItemURLError/, "Trash must use the recoverable Foundation API");
@@ -70,6 +72,10 @@ assert.match(mediaToolsSource, /cancelViewerJobs/, "Closing the viewer must be a
 assert.match(mediaToolsSource, /MPEG-4 \/ MP4/, "MP4 metadata must not inherit the QuickTime/MOV long name");
 assert.match(mediaToolsSource, /_Screenshot_/, "Project screenshots must use the stable source-name convention");
 assert.match(stateStoreSource, /\.state-write-lock/, "Cross-host local metadata writes must be serialized");
+assert.match(stateStoreSource, /pluginRootAssetKeys/, "Plugin root virtual placements must be persisted");
+assert.match(pluginFolderOpsSource, /function paste\(/, "Virtual plugin-folder clipboard must support paste");
+assert.match(mainSource, /pluginFolderOps\.makeClipboard/, "The panel must connect virtual clipboard operations");
+assert.match(mainSource, /LUT_SAMPLE_SOURCE/, "The LUT preview must use the bundled reference image");
 assert.match(fs.readFileSync(timecodePath, "utf8"), /isDropFrame/, "SMPTE drop-frame timecode support must be present");
 assert.match(hostSource, /listUsedPremiereMedia/, "The host must expose the used-timeline-media inventory API");
 assert.match(hostSource, /sequence\.videoTracks/, "Project packaging must inspect Premiere video tracks");

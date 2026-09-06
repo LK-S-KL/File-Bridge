@@ -30,10 +30,13 @@ test("selected video preview uses an inline audible video from the first frame",
   assert.match(css, /\.asset-thumb\.is-selection-preview \.sprite-preview\s*\{[^}]*opacity:\s*0\s*!important/s);
 });
 
-test("plugin folders render as a separate hierarchy with a visible back control", () => {
+test("plugin folders render as a collapsible hierarchy with a minimal back control", () => {
   assert.match(html, /id="folderScopeBar"/);
   assert.match(html, /id="folderBackButton"/);
-  assert.match(main, /function\s+createAssetGroupHeading\s*\(label, count\)/);
+  assert.doesNotMatch(html, /id="folderScopeLabel"|folder-scope-copy|当前文件夹/);
+  assert.match(main, /function\s+createAssetGroupHeading\s*\(label, count, groupKey\)/);
+  assert.match(main, /heading\.setAttribute\("aria-expanded", collapsed \? "false" : "true"\)/);
+  assert.match(main, /function\s+toggleAssetGroup\s*\(groupKey\)/);
   assert.match(main, /function\s+renderPluginFolderPreview\s*\(asset, container, generation\)/);
   assert.match(main, /assetAssignedToPluginFolder\(asset\)/);
   assert.match(main, /parentId:\s*state\.folderScope && state\.folderScope\.pluginFolderId/);
@@ -44,6 +47,55 @@ test("plugin folders render as a separate hierarchy with a visible back control"
   assert.match(main, /parentId\s*=\s*pluginFolderParentId\(pluginFolder\)/);
   assert.match(main, /persistPluginFolders\(\);\s*rebuildAssetMap\(\);/);
   assert.match(main, /item\.type\s*===\s*"audio"[\s\S]*?waveformFor\(item\.path\)/);
+});
+
+test("virtual files support copy, cut, paste, and root placement persistence", () => {
+  assert.match(html, /id="copyAssetsButton"[^>]+data-command="copy-assets"/);
+  assert.match(html, /id="cutAssetsButton"[^>]+data-command="cut-assets"/);
+  assert.match(html, /id="pasteAssetsButton"[^>]+data-command="paste-assets"/);
+  assert.match(html, /id="pasteAssetsFromResultsButton"/);
+  assert.ok(html.indexOf('src="js/plugin-folder-ops.js"') < html.indexOf('src="js/main.js"'));
+  assert.match(main, /pluginRootAssetKeys:\s*persisted\.pluginRootAssetKeys/);
+  assert.match(main, /pluginFolderOps\.makeClipboard\(mode, keys, currentPluginFolderScopeId\(\)/);
+  assert.match(main, /pluginFolderOps\.paste\(pluginFolderModel\(\), clipboard/);
+  assert.match(main, /shortcut === "c"[\s\S]*shortcut === "x"[\s\S]*shortcut === "v"/);
+});
+
+test("ordinary selection never shows a checkbox outside selection mode", () => {
+  assert.match(uiCss, /\.asset-select-check\s*\{[^}]*display:\s*none/s);
+  assert.match(uiCss, /\.asset-card\.is-selection-mode \.asset-select-check\s*\{[^}]*display:\s*grid/s);
+  assert.match(uiCss, /\.asset-card\.is-selection-mode\.is-selected \.asset-select-check/);
+  assert.doesNotMatch(uiCss, /:not\(\.is-selection-mode\):not\(\.is-selected\)/);
+  assert.match(main, /check\.textContent\s*=\s*selected \? "✓" : ""/);
+});
+
+test("viewer close control is compact and vertically aligned", () => {
+  assert.match(uiCss, /\.viewer-header\s*\{[^}]*grid-template-columns:\s*minmax\(0,1fr\) 24px[^}]*align-items:\s*center/s);
+  assert.match(uiCss, /\.viewer-close\s*\{[^}]*position:\s*static[^}]*width:\s*24px[^}]*height:\s*24px/s);
+});
+
+test("blank grid clicks stop inline playback and list mode blocks clean cards", () => {
+  assert.match(main, /\}\s*else\s*\{\s*stopAudioHover\(\);\s*stopSelectedVideoPreview\(\);\s*\}/s);
+  assert.match(main, /var clean = !list && state\.preferences\.cardStyle === "clean"/);
+  assert.match(main, /elements\.cardStyleButton\.disabled = list/);
+  assert.match(main, /if \(state\.preferences\.viewMode === "list"\) \{ return; \}/);
+});
+
+test("category row has no vertical scrollbar and material source menu is simplified", () => {
+  assert.match(uiCss, /\.filter-row\s*\{[^}]*overflow-y:\s*hidden/s);
+  assert.match(uiCss, /\.filter-row::\-webkit-scrollbar\s*\{[^}]*display:\s*none/s);
+  assert.doesNotMatch(html, /utility-source-label|source-menu-actions|openLocationsSettingsButton|createFolderFromLocationsButton|uploadFolderFromLocationsButton/);
+  assert.match(html, /id="locationsToolbarButton"[^>]+aria-label="管理素材来源"/);
+});
+
+test("labels use Chinese color names and LUT preview uses a bundled photo", () => {
+  const lutSample = new URL("../extension/ui/assets/lut-preview-landscape-log.jpg", require("node:url").pathToFileURL(__filename));
+  assert.doesNotMatch(main, /violet:\s*"Violet"|iris:\s*"Iris"|caribbean:\s*"Caribbean"/);
+  assert.match(main, /violet:\s*"紫罗兰"[\s\S]*iris:\s*"靛蓝"/);
+  assert.match(main, /LUT_SAMPLE_SOURCE\s*=\s*"ui\/assets\/lut-preview-landscape-log\.jpg"/);
+  assert.ok(fs.statSync(lutSample).size > 100000);
+  assert.match(main, /function\s+loadLutSampleImage\s*\(\)/);
+  assert.match(main, /context\.drawImage\(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height\)/);
 });
 
 test("UI 4.3 toolbar keeps the designed control groups", () => {

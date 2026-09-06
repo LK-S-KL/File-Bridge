@@ -13,6 +13,7 @@
     roots: [],
     assetMeta: {},
     pluginFolders: [],
+    pluginRootAssetKeys: [],
     libraryCache: {},
     preferences: {
       sortBy: "modified",
@@ -56,6 +57,14 @@
         return folder && typeof folder.id === "string" && typeof folder.name === "string" && folder.name.length;
       }).map(function (folder) {
         return { id: folder.id, name: folder.name, parentId: String(folder.parentId || ""), assetKeys: Array.isArray(folder.assetKeys) ? folder.assetKeys.slice(0, 20000).filter(function (key) { return typeof key === "string"; }) : [] };
+      });
+    }
+    if (Array.isArray(state.pluginRootAssetKeys)) {
+      var seenRootAssetKeys = {};
+      result.pluginRootAssetKeys = state.pluginRootAssetKeys.slice(0, 20000).filter(function (key) {
+        if (typeof key !== "string" || !key.length || seenRootAssetKeys[key]) { return false; }
+        seenRootAssetKeys[key] = true;
+        return true;
       });
     }
     if (state.libraryCache && typeof state.libraryCache === "object") {

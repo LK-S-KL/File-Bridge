@@ -412,6 +412,25 @@
     return times;
   }
 
+  function posterSampleTimes(duration) {
+    var seconds = Math.max(numberOrNull(duration) || 0, 0);
+    var ratios = [0.1, 0.35, 0.6];
+    var latest;
+    var times = [];
+    if (!seconds) {
+      return [0.5, 2, 5];
+    }
+    latest = Math.max(0, seconds - Math.min(0.05, seconds * 0.01));
+    ratios.forEach(function (ratio) {
+      var candidate = Math.max(0, Math.min(latest, seconds * ratio));
+      candidate = Math.round(candidate * 1000) / 1000;
+      if (times.indexOf(candidate) === -1) {
+        times.push(candidate);
+      }
+    });
+    return times.length ? times : [0];
+  }
+
   function spriteFrameAtProgress(sprite, progress) {
     var frames = Number(sprite && (sprite.frames || sprite.frameCount));
     var value = Math.max(0, Math.min(1, Number(progress) || 0));
@@ -919,30 +938,76 @@
       });
     }
 
-    function generateImage(filePath, kind) {
+    function generateWaveform(filePath) {
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
         var ffmpeg;
         var args;
-        ensureDirectories(); destination = path.join(kind === "poster" ? posterDirectory : waveformDirectory, key + "-v3.png");
+        ensureDirectories(); destination = path.join(waveformDirectory, key + "-v3.png");
         if (usableCacheFile(destination)) { return destination; }
         ffmpeg = findBinary("ffmpeg"); if (!ffmpeg) { throw new Error("FFMPEG_NOT_FOUND"); }
-        args = kind === "waveform" ? ["-hide_banner", "-loglevel", "error", "-i", filePath, "-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=600x120:colors=0x62d684:scale=sqrt:draw=full[wave]", "-map", "[wave]", "-frames:v", "1", "-an", "-sn", "-dn", "-y", destination] : ["-hide_banner", "-loglevel", "error", "-ss", "0.5", "-i", filePath, "-frames:v", "1", "-vf", "scale=480:270:force_original_aspect_ratio=increase,crop=480:270", "-y", destination];
+        args = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=600x120:colors=0x62d684:scale=sqrt:draw=full[wave]", "-map", "[wave]", "-frames:v", "1", "-an", "-sn", "-dn", "-y", destination];
         return outputOnce(destination, function () { return runFfmpeg(args, destination, 45000, "derived:" + destination); });
       });
     }
 
+    function generatePosterFrame(filePath, destination, seconds, videoStreamIndex, rejectBlack) {
+      var filter = "scale=480:270:force_original_aspect_ratio=increase,crop=480:270,setsar=1";
+      var args;
+      if (rejectBlack) {
+        /* Inspect only the requested frame. The metadata filter deliberately
+           emits no output for near-black frames, allowing the caller to try a
+           later representative point without scanning the whole source. */
+        filter = "trim=end_frame=1," + filter + ",format=yuv420p,signalstats,metadata=select:key=lavfi.signalstats.YAVG:value=20:function=greater";
+      }
+      args = [
+        "-hide_banner", "-loglevel", "error", "-ss", Math.max(0, Number(seconds) || 0).toFixed(3), "-i", filePath,
+        "-map", "0:v:" + Math.max(0, Number(videoStreamIndex) || 0), "-frames:v", "1", "-vf", filter,
+        "-an", "-sn", "-dn", "-y", destination
+      ];
+      return runFfmpeg(args, destination, 45000, "derived:" + destination);
+    }
+
     function posterFor(filePath) {
-      /* A few camera/phone containers reject the crop filter even though a
-         single decoded frame is available. Keep card mode useful by falling
-         back to the frame renderer, which uses a simpler filter graph. */
-      return generateImage(filePath, "poster").catch(function (error) {
-        return previewProxyFor(filePath, "720").then(function (proxyPath) {
-          return generateImage(proxyPath, "poster");
-        }).catch(function () {
-          return frameFor(filePath, 0.5, 480, 270).catch(function () {
-            throw error;
+      return statSource(filePath).then(function (stat) {
+        var key = cacheKey(filePath, stat);
+        var destination;
+        ensureDirectories(); destination = path.join(posterDirectory, key + "-v4.png");
+        if (usableCacheFile(destination)) { return destination; }
+        return metadataFor(filePath).then(function (metadata) {
+          var times = posterSampleTimes(metadata.duration);
+          var videoStreamIndex = numberOrNull(metadata.videoStreamIndex);
+          var lastError = null;
+          videoStreamIndex = videoStreamIndex === null ? 0 : videoStreamIndex;
+
+          function tryCandidate(index) {
+            if (index >= times.length) { return Promise.reject(lastError || new Error("POSTER_FRAME_NOT_FOUND")); }
+            return generatePosterFrame(filePath, destination, times[index], videoStreamIndex, true).catch(function (error) {
+              if (error && error.code === "JOB_CANCELLED") { throw error; }
+              lastError = error;
+              if (error && error.message === "OUTPUT_NOT_CREATED") { return tryCandidate(index + 1); }
+              throw error;
+            });
+          }
+
+          return outputOnce(destination, function () {
+            return tryCandidate(0).catch(function (error) {
+              var finalTime;
+              if (error && error.code === "JOB_CANCELLED") { throw error; }
+              finalTime = times[times.length - 1] || 0;
+              /* A genuinely dark source still deserves a thumbnail. After all
+                 representative candidates are rejected, keep its last frame. */
+              return generatePosterFrame(filePath, destination, finalTime, videoStreamIndex, false).catch(function (directError) {
+                if (directError && directError.code === "JOB_CANCELLED") { throw directError; }
+                return previewProxyFor(filePath, "720").then(function (proxyPath) {
+                  return generatePosterFrame(proxyPath, destination, finalTime, 0, false);
+                }).catch(function (proxyError) {
+                  if (proxyError && proxyError.code === "JOB_CANCELLED") { throw proxyError; }
+                  return frameFor(filePath, finalTime, 480, 270).catch(function () { throw directError; });
+                });
+              });
+            });
           });
         });
       });
@@ -1049,7 +1114,7 @@
       captureDirectory: captureDirectory,
       metadataFor: metadataFor,
       posterFor: posterFor,
-      waveformFor: function (filePath) { return generateImage(filePath, "waveform"); },
+      waveformFor: generateWaveform,
       previewStillFor: previewStillFor,
       spriteFor: spriteFor,
       previewProxyFor: previewProxyFor,
@@ -1077,6 +1142,7 @@
     formatDuration: formatDuration,
     formatBitrate: formatBitrate,
     spriteSampleTimes: spriteSampleTimes,
+    posterSampleTimes: posterSampleTimes,
     spriteFrameAtProgress: spriteFrameAtProgress,
     SPRITE_FRAMES: SPRITE_FRAMES,
     SPRITE_COLUMNS: SPRITE_COLUMNS,

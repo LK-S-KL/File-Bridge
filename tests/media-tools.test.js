@@ -116,6 +116,35 @@ test("infers HLG, Dolby Vision, and alpha as best-effort values", () => {
   assert.equal(alpha.present, true);
 });
 
+test("selects the real video stream instead of an attached cover image", () => {
+  const metadata = mediaTools.normalizeProbe({
+    streams: [
+      {
+        index: 0,
+        codec_type: "video",
+        codec_name: "mjpeg",
+        width: 1200,
+        height: 800,
+        disposition: { attached_pic: 1, default: 0 }
+      },
+      {
+        index: 1,
+        codec_type: "video",
+        codec_name: "h264",
+        width: 1920,
+        height: 1080,
+        avg_frame_rate: "25/1",
+        disposition: { attached_pic: 0, default: 1 }
+      }
+    ],
+    format: { format_name: "mov,mp4,m4a,3gp,3g2,mj2", duration: "10" }
+  }, fixtureStat(), "/素材/带封面的视频.mp4");
+
+  assert.equal(metadata.videoStreamIndex, 1);
+  assert.equal(metadata.videoCodecShort, "h264");
+  assert.equal(metadata.resolution, "1920 × 1080");
+});
+
 test("does not turn unavailable numeric metadata into zero", () => {
   const raw = {
     streams: [{
@@ -160,6 +189,13 @@ test("maps pointer progress to the correct video sprite frame", () => {
   assert.equal(mediaTools.spriteFrameAtProgress(sprite, 1).backgroundPosition, "-720px -272px");
 });
 
+test("uses progressively later representative times for poster frames", () => {
+  assert.deepEqual(mediaTools.posterSampleTimes(100), [10, 35, 60]);
+  assert.deepEqual(mediaTools.posterSampleTimes(0), [0.5, 2, 5]);
+  assert.deepEqual(mediaTools.posterSampleTimes(null), [0.5, 2, 5]);
+  assert.ok(mediaTools.posterSampleTimes(0.25).every((seconds) => seconds >= 0 && seconds < 0.25));
+});
+
 test("reports missing NAS media asynchronously instead of throwing on the UI thread", async () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-async-error-"));
   const service = mediaTools.create({ fs, path, os: { homedir: () => fixture }, crypto, childProcess });
@@ -175,6 +211,7 @@ test("reports missing NAS media asynchronously instead of throwing on the UI thr
 test("probes media and creates a cached sprite and waveform without changing the source", async (t) => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-tools-"));
   const sourcePath = path.join(fixture, "source clip.mp4");
+  const blackIntroPath = path.join(fixture, "black intro clip.mp4");
   const movPath = path.join(fixture, "source clip.mov");
   const aiPath = path.join(fixture, "design preview.ai");
   const transcodePath = path.join(fixture, "source clip_Proxy_360p.mp4");
@@ -220,6 +257,14 @@ test("probes media and creates a cached sprite and waveform without changing the
     ], { timeout: 30000 });
     childProcess.execFileSync(ffmpeg, [
       "-hide_banner", "-loglevel", "error",
+      "-f", "lavfi", "-i", "color=c=black:duration=1.2:size=320x180:rate=24",
+      "-f", "lavfi", "-i", "testsrc2=duration=1.8:size=320x180:rate=24",
+      "-f", "lavfi", "-i", "color=c=black:duration=3:size=320x180:rate=24",
+      "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
+      "-map", "[v]", "-c:v", "mpeg4", "-q:v", "5", "-y", blackIntroPath
+    ], { timeout: 30000 });
+    childProcess.execFileSync(ffmpeg, [
+      "-hide_banner", "-loglevel", "error",
       "-i", sourcePath,
       "-map", "0", "-c", "copy", "-y", movPath
     ], { timeout: 30000 });
@@ -236,6 +281,17 @@ test("probes media and creates a cached sprite and waveform without changing the
     assert.equal(metadata.audioCodecShort, "aac");
     assert.equal(metadata.resolution, "320 × 180");
     assert.ok(metadata.duration > 1.8 && metadata.duration <= 2.1);
+
+    const posterPath = await service.posterFor(blackIntroPath);
+    const posterProbe = childProcess.spawnSync(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-i", posterPath,
+      "-vf", "signalstats,metadata=print:file=-", "-frames:v", "1", "-f", "null", "-"
+    ], { encoding: "utf8", timeout: 30000 });
+    const lumaMatch = `${posterProbe.stdout || ""}\n${posterProbe.stderr || ""}`.match(/lavfi\.signalstats\.YAVG=([^\s]+)/);
+    assert.equal(posterProbe.status, 0);
+    assert.match(path.basename(posterPath), /-v4\.png$/);
+    assert.ok(lumaMatch && Number(lumaMatch[1]) > 20, "poster generation must skip the black intro frame");
+    assert.equal(await service.posterFor(blackIntroPath), posterPath, "the v4 poster should be reused from cache");
 
     const sprite = await service.spriteFor(sourcePath);
     assert.equal(sprite.frameCount, 12);
