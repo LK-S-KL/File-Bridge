@@ -41,4 +41,6 @@ test("plugin folders render as a separate hierarchy with a visible back control"
   assert.match(css, /\.folder-scope-bar\s*\{/);
   assert.match(css, /\.folder-empty-icon\s*\{/);
   assert.match(main, /parentId\s*=\s*pluginFolderParentId\(pluginFolder\)/);
+  assert.match(main, /persistPluginFolders\(\);\s*rebuildAssetMap\(\);/);
+  assert.match(main, /item\.type\s*===\s*"audio"[\s\S]*?waveformFor\(item\.path\)/);
 });

@@ -1030,6 +1030,10 @@
     target.assetKeys = target.assetKeys || [];
     keys.forEach(function (key) { if (target.assetKeys.indexOf(key) === -1) { target.assetKeys.push(key); } });
     persistPluginFolders();
+    /* Folder cards carry derived counts and preview membership. Rebuild the
+     * lookup immediately so the next render and context action use the same
+     * descriptor instance. */
+    rebuildAssetMap();
   }
   function readAdvancedFilters() {
     state.filters.size = elements.sizeFilter.value;
@@ -1342,6 +1346,9 @@
         sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
       } else if (mediaTools && item.type === "image") {
         sourcePromise = mediaTools.previewStillFor(item.path);
+        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
+      } else if (mediaTools && item.type === "audio") {
+        sourcePromise = mediaTools.waveformFor(item.path);
         sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
       }
     });
@@ -2694,12 +2701,20 @@
     }
     if (action && action.type === "delete-plugin-folder") {
       var removeFolderIds = {};
+      var deletedFolder = pluginFolderById(action.pluginFolderId);
+      var deletedParentId = pluginFolderParentId(deletedFolder);
+      var currentPluginScopeId = state.folderScope && state.folderScope.pluginFolderId ? state.folderScope.pluginFolderId : "";
       (function collectFolderIds(folderId) {
         removeFolderIds[folderId] = true;
         pluginFolderChildren(folderId).forEach(function (child) { if (!removeFolderIds[child.id]) { collectFolderIds(child.id); } });
       }(action.pluginFolderId));
       state.pluginFolders = state.pluginFolders.filter(function (folder) { return !removeFolderIds[folder.id]; });
-      persistPluginFolders(); closeDialog(); elements.dialogConfirmButton.disabled = false; state.folderScope = null; showNotice("插件文件夹已删除。", false, 3500); applyFilters(); return;
+      persistPluginFolders(); rebuildAssetMap(); closeDialog(); elements.dialogConfirmButton.disabled = false;
+      if (currentPluginScopeId && removeFolderIds[currentPluginScopeId]) {
+        state.folderScope = deletedParentId && !removeFolderIds[deletedParentId] ? { pluginFolderId: deletedParentId } : null;
+      }
+      state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
+      renderLocations(); renderFolderScopeBar(); showNotice("插件文件夹已删除。", false, 3500); applyFilters(); return;
     }
     if (action && action.type === "create-folder") {
       assetOps.createFolder({ roots: state.roots, rootId: action.destination.rootId, parentPath: action.destination.path, name: elements.renameInput.value, onProgress: showOperationProgress }).then(function (created) {
@@ -2720,7 +2735,7 @@
       var pluginFolder = pluginFolderById(asset.pluginFolderId);
       if (!pluginFolder) { elements.dialogConfirmButton.disabled = false; closeDialog(); return; }
       pluginFolder.name = String(elements.renameInput.value || "").trim() || pluginFolder.name;
-      persistPluginFolders(); closeDialog(); elements.dialogConfirmButton.disabled = false; showNotice("插件文件夹已重命名。", false, 3500); applyFilters();
+      persistPluginFolders(); rebuildAssetMap(); closeDialog(); elements.dialogConfirmButton.disabled = false; renderFolderScopeBar(); showNotice("插件文件夹已重命名。", false, 3500); applyFilters();
       return;
     }
     if (!fileOps) { elements.dialogConfirmButton.disabled = false; closeDialog(); return; }
