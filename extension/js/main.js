@@ -102,6 +102,7 @@
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
       "selectAllButton", "searchToggleButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton", "locationsToolbarButton",
       "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomRange", "resultCount", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
+      "folderScopeBar", "folderBackButton", "folderScopeLabel",
       "statusText", "locationsPopover", "locationsList", "locationsBackButton", "closeLocationsPopover", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
       "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "clearLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
@@ -295,6 +296,7 @@
     elements.addFolderFromPopover.addEventListener("click", chooseFolder);
     if (elements.locationsBackButton) { elements.locationsBackButton.addEventListener("click", leaveFolderScope); }
     if (elements.closeLocationsPopover) { elements.closeLocationsPopover.addEventListener("click", function () { hidePopover(elements.locationsPopover, elements.locationsToolbarButton || elements.locationsButton); }); }
+    if (elements.folderBackButton) { elements.folderBackButton.addEventListener("click", leaveFolderScope); }
     elements.upFolderButton.addEventListener("click", leaveFolderScope);
     elements.toggleAllRootsButton.addEventListener("click", toggleAllRoots);
     if (elements.createFolderFromResultsButton) { elements.createFolderFromResultsButton.addEventListener("click", function () { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); openCreatePluginFolderDialog(); }); }
@@ -753,6 +755,7 @@
     elements.toggleAllRootsButton.textContent = scanningRoots.length === state.roots.length && state.roots.length ? "取消全选" : "全选";
     elements.upFolderButton.hidden = !state.folderScope;
     if (elements.locationsBackButton) { elements.locationsBackButton.hidden = !state.folderScope; }
+    renderFolderScopeBar();
   }
 
   function rootsForCurrentScan() {
@@ -962,9 +965,53 @@
 
   function assetForId(id) { return id ? state.assetById[id] || null : null; }
   function selectedAsset() { return assetForId(state.selectedId); }
+
+  function pluginFolderParentId(folder) { return folder ? String(folder.parentId || "") : ""; }
+
+  function pluginFolderChildren(folderId) {
+    var parentId = String(folderId || "");
+    return state.pluginFolders.filter(function (folder) { return pluginFolderParentId(folder) === parentId; });
+  }
+
+  function pluginFolderPathLabel(folderId) {
+    var names = [];
+    var current = pluginFolderById(folderId);
+    var visited = {};
+    while (current && !visited[current.id]) {
+      visited[current.id] = true;
+      names.unshift(current.name);
+      current = pluginFolderById(pluginFolderParentId(current));
+    }
+    return names.join(" / ");
+  }
+
+  function pluginFolderAssetKeys(folderId, visited) {
+    var folder = pluginFolderById(folderId);
+    var seen = visited || {};
+    var keys = [];
+    if (!folder || seen[folder.id]) { return keys; }
+    seen[folder.id] = true;
+    (folder.assetKeys || []).forEach(function (key) { if (keys.indexOf(key) === -1) { keys.push(key); } });
+    pluginFolderChildren(folder.id).forEach(function (child) {
+      pluginFolderAssetKeys(child.id, seen).forEach(function (key) { if (keys.indexOf(key) === -1) { keys.push(key); } });
+    });
+    return keys;
+  }
+
+  function pluginFolderAssetCount(folder) {
+    return pluginFolderAssetKeys(folder && folder.id).length;
+  }
+
+  function assetAssignedToPluginFolder(asset) {
+    var key;
+    if (!asset || !asset.path) { return false; }
+    key = normalizeAssetKey(asset.path);
+    return state.pluginFolders.some(function (folder) { return Array.isArray(folder.assetKeys) && folder.assetKeys.indexOf(key) !== -1; });
+  }
+
   function pluginFolderDescriptors() {
     return state.pluginFolders.map(function (folder) {
-      return { id: "plugin-folder:" + folder.id, domId: "plugin-folder:" + folder.id, name: folder.name, path: "plugin://" + folder.id, relativePath: folder.name, folder: "插件文件夹", extension: "", type: "plugin-folder", size: 0, modifiedMs: 0, rootId: "plugin", rootPath: "", rootLabel: "插件文件夹", pluginFolderId: folder.id };
+      return { id: "plugin-folder:" + folder.id, domId: "plugin-folder:" + folder.id, name: folder.name, path: "plugin://" + folder.id, relativePath: folder.name, folder: "插件文件夹", extension: "", type: "plugin-folder", size: 0, modifiedMs: 0, rootId: "plugin", rootPath: "", rootLabel: "插件文件夹", pluginFolderId: folder.id, parentId: pluginFolderParentId(folder), itemCount: pluginFolderAssetCount(folder) };
     });
   }
 
@@ -972,10 +1019,16 @@
 
   function pluginFolderContains(folder, asset) { return !!folder && folder.assetKeys.indexOf(normalizeAssetKey(asset.path)) !== -1; }
 
-  function addPathsToPluginFolder(folderId, paths) {
-    var folder = pluginFolderById(folderId);
-    if (!folder) { return; }
-    (paths || []).forEach(function (value) { var key = normalizeAssetKey(value); if (folder.assetKeys.indexOf(key) === -1) { folder.assetKeys.push(key); } });
+  function assignPathsToPluginFolder(folderId, paths) {
+    var target = pluginFolderById(folderId);
+    var keys = (paths || []).map(normalizeAssetKey).filter(Boolean);
+    if (!target || !keys.length) { return; }
+    state.pluginFolders.forEach(function (folder) {
+      if (folder.id === target.id) { return; }
+      folder.assetKeys = (folder.assetKeys || []).filter(function (key) { return keys.indexOf(key) === -1; });
+    });
+    target.assetKeys = target.assetKeys || [];
+    keys.forEach(function (key) { if (target.assetKeys.indexOf(key) === -1) { target.assetKeys.push(key); } });
     persistPluginFolders();
   }
   function readAdvancedFilters() {
@@ -1010,10 +1063,16 @@
   function assetMatches(asset) {
     var local = localMetaFor(asset);
     var megabyte = 1024 * 1024;
-    if (asset.type === "plugin-folder") { return !state.folderScope && (!state.query || asset.name.toLowerCase().indexOf(state.query.toLowerCase()) !== -1); }
+    if (asset.type === "plugin-folder") {
+      var parentId = String(asset.parentId || "");
+      var scopeId = state.folderScope && state.folderScope.pluginFolderId ? String(state.folderScope.pluginFolderId) : "";
+      if (parentId !== scopeId) { return false; }
+      return !state.query || asset.name.toLowerCase().indexOf(state.query.toLowerCase()) !== -1;
+    }
     if (state.folderScope && state.folderScope.pluginFolderId) {
       return pluginFolderContains(pluginFolderById(state.folderScope.pluginFolderId), asset);
     }
+    if (!state.folderScope && assetAssignedToPluginFolder(asset)) { return false; }
     if (state.folderScope && (asset.rootId !== state.folderScope.rootId || path.dirname(asset.path) !== state.folderScope.path)) { return false; }
     if (!SeekLibrary.matches(asset, state.query, state.filter)) { return false; }
     if (state.favoriteOnly && !local.favorite) { return false; }
@@ -1037,7 +1096,30 @@
     }
     if (folder.rootId) { state.preferences.activeRootId = folder.rootId; }
     state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
-    persistPreferences(); renderLocations(); applyFilters();
+    persistPreferences(); renderLocations(); renderFolderScopeBar(); applyFilters();
+  }
+
+  function renderFolderScopeBar() {
+    var scope = state.folderScope;
+    var folder;
+    var root;
+    var label;
+    if (!elements.folderScopeBar) { return; }
+    if (!scope) {
+      elements.folderScopeBar.hidden = true;
+      if (elements.folderScopeLabel) { elements.folderScopeLabel.textContent = ""; }
+      return;
+    }
+    if (scope.pluginFolderId) {
+      folder = pluginFolderById(scope.pluginFolderId);
+      label = folder ? pluginFolderPathLabel(folder.id) : "文件夹";
+    } else {
+      root = state.roots.filter(function (item) { return item.id === scope.rootId; })[0];
+      label = path && scope.path ? path.basename(scope.path) : scope.path;
+      if (!label || label === ".") { label = root ? root.label : scope.path; }
+    }
+    elements.folderScopeLabel.textContent = label || "文件夹";
+    elements.folderScopeBar.hidden = false;
   }
 
   function leaveFolderScope() {
@@ -1045,12 +1127,19 @@
     var root;
     var parent;
     if (!scope) { return; }
-    if (scope.pluginFolderId) { state.folderScope = null; state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null; applyFilters(); return; }
+    if (scope.pluginFolderId) {
+      var pluginFolder = pluginFolderById(scope.pluginFolderId);
+      var parentId = pluginFolderParentId(pluginFolder);
+      state.folderScope = parentId ? { pluginFolderId: parentId } : null;
+      state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
+      renderLocations(); renderFolderScopeBar(); applyFilters();
+      return;
+    }
     root = state.roots.filter(function (item) { return item.id === scope.rootId; })[0];
     parent = path.dirname(scope.path);
     state.folderScope = root && parent !== root.path && parent.indexOf(root.path + path.sep) === 0 ? { rootId: scope.rootId, path: parent } : null;
     state.selectedIds = {}; state.selectedId = null; state.selectionAnchorId = null;
-    renderLocations(); applyFilters();
+    renderLocations(); renderFolderScopeBar(); applyFilters();
   }
 
   function currentDestination() {
@@ -1080,14 +1169,16 @@
   }
 
   function applyFilters() {
-    var files = state.assets.filter(assetMatches).sort(compareAssets);
-    state.visibleAssets = state.folderScope && state.folderScope.pluginFolderId ? files : pluginFolderDescriptors().concat(files);
+    var allAssets = pluginFolderDescriptors().concat(state.assets);
+    state.visibleAssets = allAssets.filter(assetMatches).sort(compareAssets);
     renderAssets();
   }
 
   function renderAssets() {
     var fragment = document.createDocumentFragment();
     var renderList = state.visibleAssets;
+    var folderAssets = renderList.filter(function (asset) { return asset.type === "plugin-folder"; });
+    var fileAssets = renderList.filter(function (asset) { return asset.type !== "plugin-folder"; });
     var selectedVisible = false;
     var visuals = [];
     stopSelectedVideoPreview();
@@ -1107,9 +1198,10 @@
     elements.assetGrid.innerHTML = "";
     elements.assetGrid.setAttribute("data-card-style", state.preferences.cardStyle === "clean" ? "clean" : "info");
     elements.assetGrid.classList.toggle("is-clean-card", state.preferences.cardStyle === "clean");
+    renderList = folderAssets.concat(fileAssets);
     if (renderList.length) { elements.assetGrid.hidden = false; }
     elements.resultCount.textContent = state.visibleAssets.length + " 项";
-    renderList.forEach(function (asset) {
+    renderList.forEach(function (asset, index) {
       var local = localMetaFor(asset);
       var card = document.createElement("article");
       var thumb = document.createElement("div");
@@ -1125,6 +1217,10 @@
       var copy = document.createElement("div");
       var name = document.createElement("span");
       var details = document.createElement("span");
+      var folderCollage;
+      var placeholder;
+      if (index === 0 && folderAssets.length) { fragment.appendChild(createAssetGroupHeading("文件夹", folderAssets.length)); }
+      if (asset.type !== "plugin-folder" && index === folderAssets.length) { fragment.appendChild(createAssetGroupHeading("文件", fileAssets.length)); }
       card.className = "asset-card";
       card.setAttribute("data-asset-id", asset.domId);
       card.setAttribute("tabindex", "0");
@@ -1146,20 +1242,31 @@
       progress.className = "scrub-progress";
       type.className = "asset-type"; type.textContent = asset.extension || asset.type;
       type.hidden = asset.type === "folder" || asset.type === "plugin-folder";
-      thumb.appendChild(createPlaceholder(asset)); thumb.appendChild(sprite); thumb.appendChild(progress); thumb.appendChild(type);
+      placeholder = createPlaceholder(asset);
+      thumb.appendChild(placeholder);
+      if (asset.type === "plugin-folder") {
+        placeholder.hidden = true;
+        folderCollage = document.createElement("div");
+        folderCollage.className = "folder-collage";
+        thumb.appendChild(folderCollage);
+        renderPluginFolderPreview(asset, folderCollage, renderGeneration);
+      } else {
+        thumb.appendChild(sprite); thumb.appendChild(progress);
+      }
+      thumb.appendChild(type);
       favorite.type = "button"; favorite.className = "favorite-toggle" + (local.favorite ? " is-favorite" : "");
       favorite.textContent = local.favorite ? "★" : "☆"; favorite.title = local.favorite ? "取消收藏" : "收藏";
       favorite.setAttribute("aria-label", favorite.title); favorite.draggable = false; favorite.hidden = asset.type === "folder" || asset.type === "plugin-folder"; thumb.appendChild(favorite);
-      if (local.label && local.label !== "none") { var label = document.createElement("span"); label.className = "color-label"; label.setAttribute("data-label", local.label); thumb.appendChild(label); }
-      if (local.pinned) { pinned.className = "pin-badge"; pinned.title = "已置顶"; thumb.appendChild(pinned); }
-      if (/_Proxy_(?:1080|720|480|360)p(?:-\d+)?\.mp4$/i.test(asset.name)) { proxy.className = "proxy-badge"; proxy.textContent = "PROXY"; thumb.appendChild(proxy); }
-      if (asset.offline) { offlineBadge.className = "offline-badge"; offlineBadge.textContent = "OFFLINE"; thumb.appendChild(offlineBadge); card.classList.add("is-offline"); }
+      if (asset.type !== "plugin-folder" && local.label && local.label !== "none") { var label = document.createElement("span"); label.className = "color-label"; label.setAttribute("data-label", local.label); thumb.appendChild(label); }
+      if (asset.type !== "plugin-folder" && local.pinned) { pinned.className = "pin-badge"; pinned.title = "已置顶"; thumb.appendChild(pinned); }
+      if (asset.type !== "plugin-folder" && /_Proxy_(?:1080|720|480|360)p(?:-\d+)?\.mp4$/i.test(asset.name)) { proxy.className = "proxy-badge"; proxy.textContent = "PROXY"; thumb.appendChild(proxy); }
+      if (asset.type !== "plugin-folder" && asset.offline) { offlineBadge.className = "offline-badge"; offlineBadge.textContent = "OFFLINE"; thumb.appendChild(offlineBadge); card.classList.add("is-offline"); }
       duration.className = "duration-badge"; duration.hidden = true; thumb.appendChild(duration);
       copy.className = "asset-copy";
       name.className = "asset-name"; name.textContent = asset.name; name.title = asset.name;
-      details.className = "asset-details"; details.textContent = asset.type === "plugin-folder" ? "插件文件夹" : asset.type === "folder" ? "本地文件夹" : typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
+      details.className = "asset-details"; details.textContent = asset.type === "plugin-folder" ? String(asset.itemCount || 0) + " 项" : asset.type === "folder" ? "本地文件夹" : typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size);
       copy.appendChild(name); copy.appendChild(details); card.appendChild(thumb); card.appendChild(copy); fragment.appendChild(card);
-      visuals.push({ asset: asset, thumb: thumb, generation: renderGeneration });
+      if (asset.type !== "plugin-folder") { visuals.push({ asset: asset, thumb: thumb, generation: renderGeneration }); }
     });
     elements.assetGrid.appendChild(fragment);
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
@@ -1167,7 +1274,11 @@
     syncSelectAllButton();
     if (!state.visibleAssets.length) {
       elements.assetGrid.hidden = true;
-      showEmpty(state.assets.length ? "没有匹配的素材" : "没有可用素材", state.assets.length ? "调整搜索、收藏或筛选条件。" : "添加一个包含视频、图片、音频或 LUT 的素材位置。");
+      if (state.folderScope && state.folderScope.pluginFolderId) {
+        showEmpty("文件夹为空", "把素材拖入此文件夹，或使用右键添加到文件夹。");
+      } else {
+        showEmpty(state.assets.length ? "没有匹配的素材" : "没有可用素材", state.assets.length ? "调整搜索、收藏或筛选条件。" : "添加一个包含视频、图片、音频或 LUT 的素材位置。");
+      }
     } else {
       elements.assetGrid.hidden = false; elements.emptyState.hidden = true;
     }
@@ -1179,6 +1290,61 @@
     placeholder.textContent = asset.type === "video" ? "VID" : asset.type === "image" ? "IMG" : asset.type === "lut" ? "LUT" : asset.type === "folder" || asset.type === "plugin-folder" ? "" : "AUD";
     if (asset.type === "folder" || asset.type === "plugin-folder") { placeholder.classList.add("folder-thumb"); }
     return placeholder;
+  }
+
+  function createAssetGroupHeading(label, count) {
+    var heading = document.createElement("div");
+    var chevron = document.createElement("span");
+    var text = document.createElement("strong");
+    heading.className = "asset-group-heading";
+    chevron.className = "asset-group-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    text.textContent = label + " · " + count;
+    heading.appendChild(chevron); heading.appendChild(text);
+    heading.setAttribute("aria-label", text.textContent);
+    return heading;
+  }
+
+  function folderPreviewAssets(asset) {
+    var keys = pluginFolderAssetKeys(asset && asset.pluginFolderId);
+    return state.assets.filter(function (item) { return keys.indexOf(normalizeAssetKey(item.path)) !== -1 && !item.offline; });
+  }
+
+  function setFolderTileImage(tile, filePath, asset, generation) {
+    var image = document.createElement("img");
+    if (generation !== renderGeneration) { return; }
+    image.alt = asset.name; image.draggable = false;
+    image.onload = function () { if (generation === renderGeneration && tile.parentNode) { tile.classList.add("has-image"); } };
+    image.onerror = function () { image.remove(); };
+    image.src = SeekLibrary.fileUrl(filePath);
+    tile.appendChild(image);
+  }
+
+  function renderPluginFolderPreview(asset, container, generation) {
+    var candidates = folderPreviewAssets(asset).slice(0, 4);
+    var directImages = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "svg"];
+    if (!candidates.length) {
+      container.classList.add("is-empty");
+      container.innerHTML = '<span class="folder-empty-icon" aria-hidden="true"><span class="icon-folder-large"></span></span>';
+      return;
+    }
+    container.setAttribute("data-count", String(candidates.length));
+    candidates.forEach(function (item) {
+      var tile = document.createElement("span");
+      var sourcePromise;
+      tile.className = "folder-collage-tile";
+      tile.textContent = String(item.extension || item.type || "").toUpperCase();
+      container.appendChild(tile);
+      if (directImages.indexOf(item.extension) !== -1) {
+        setFolderTileImage(tile, item.path, item, generation);
+      } else if (mediaTools && item.type === "video") {
+        sourcePromise = mediaTools.posterFor(item.path);
+        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
+      } else if (mediaTools && item.type === "image") {
+        sourcePromise = mediaTools.previewStillFor(item.path);
+        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
+      }
+    });
   }
 
   function requestVisual(asset, thumb, index, generation) {
@@ -1593,7 +1759,7 @@
     showNotice("正在复制 " + paths.length + " 项到当前素材路径…", false, 0);
     assetOps.copyExternalFiles({ roots: state.roots, rootId: destination.rootId, destinationPath: destination.path, sourcePaths: paths, onProgress: showOperationProgress }).then(function (copied) {
       var copiedPaths = (copied || []).map(function (item) { return item.path; });
-      if (destination.pluginFolderId) { addPathsToPluginFolder(destination.pluginFolderId, copiedPaths); }
+      if (destination.pluginFolderId) { assignPathsToPluginFolder(destination.pluginFolderId, copiedPaths); }
       showNotice("外部素材已复制到当前路径。", false, 3800); scanAssets(copiedPaths);
     }).catch(function (error) { showNotice("复制失败：" + friendlyError(error), true, 6500); });
   }
@@ -1745,11 +1911,7 @@
     if (pluginFolderId) {
       var pluginFolder = pluginFolderById(pluginFolderId);
       if (!pluginFolder) { showNotice("插件文件夹不存在。", true, 4000); return; }
-      files.forEach(function (asset) {
-        var key = normalizeAssetKey(asset.path);
-        if (pluginFolder.assetKeys.indexOf(key) === -1) { pluginFolder.assetKeys.push(key); }
-      });
-      persistPluginFolders();
+      assignPathsToPluginFolder(pluginFolder.id, files.map(function (asset) { return asset.path; }));
       state.selectedIds = {}; state.selectedId = null;
       showNotice("素材已添加到插件文件夹。", false, 3500);
       applyFilters();
@@ -2526,12 +2688,17 @@
     if (action && action.type === "create-plugin-folder") {
       var folderName = String(elements.renameInput.value || "").trim();
       if (!folderName || folderName === "." || folderName === "..") { elements.dialogConfirmButton.disabled = false; showNotice("请输入有效的文件夹名称。", true, 4000); return; }
-      state.pluginFolders.push({ id: "pf-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7), name: folderName, parentId: "", assetKeys: [] });
+      state.pluginFolders.push({ id: "pf-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7), name: folderName, parentId: state.folderScope && state.folderScope.pluginFolderId ? state.folderScope.pluginFolderId : "", assetKeys: [] });
       var createdPluginFolder = state.pluginFolders[state.pluginFolders.length - 1];
       persistPluginFolders(); rebuildAssetMap(); closeDialog(); elements.dialogConfirmButton.disabled = false; state.selectedIds = {}; state.selectedId = "plugin-folder:" + createdPluginFolder.id; state.selectedIds[state.selectedId] = true; showNotice("插件文件夹已创建。", false, 3500); applyFilters(); setTimeout(function () { var card = findCard(state.selectedId); if (card) { card.scrollIntoView({ block: "nearest", inline: "nearest" }); } }, 0); return;
     }
     if (action && action.type === "delete-plugin-folder") {
-      state.pluginFolders = state.pluginFolders.filter(function (folder) { return folder.id !== action.pluginFolderId; });
+      var removeFolderIds = {};
+      (function collectFolderIds(folderId) {
+        removeFolderIds[folderId] = true;
+        pluginFolderChildren(folderId).forEach(function (child) { if (!removeFolderIds[child.id]) { collectFolderIds(child.id); } });
+      }(action.pluginFolderId));
+      state.pluginFolders = state.pluginFolders.filter(function (folder) { return !removeFolderIds[folder.id]; });
       persistPluginFolders(); closeDialog(); elements.dialogConfirmButton.disabled = false; state.folderScope = null; showNotice("插件文件夹已删除。", false, 3500); applyFilters(); return;
     }
     if (action && action.type === "create-folder") {

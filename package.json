@@ -1,6 +1,6 @@
 {
   "name": "lk-file-bridge-adobe-extension",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "private": true,
   "description": "LK‘s File Bridge media browser and ingest bridge for Adobe Premiere Pro and After Effects",
   "scripts": {

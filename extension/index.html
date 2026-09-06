@@ -72,6 +72,10 @@
 
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <div id="operationProgress" class="operation-progress" role="status" aria-live="polite" hidden><span id="operationProgressLabel"></span><div><i id="operationProgressBar"></i></div></div>
+        <div id="folderScopeBar" class="folder-scope-bar" hidden>
+          <button id="folderBackButton" class="folder-scope-back" type="button" title="返回上一级" aria-label="返回上一级"><span class="icon-up" aria-hidden="true"></span><span>返回</span></button>
+          <div class="folder-scope-copy"><span>当前文件夹</span><strong id="folderScopeLabel"></strong></div>
+        </div>
         <section id="assetGrid" class="asset-grid grid-medium" aria-label="素材列表"></section>
 
         <section id="emptyState" class="empty-state" hidden>

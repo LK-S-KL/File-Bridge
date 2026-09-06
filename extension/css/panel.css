@@ -228,6 +228,16 @@ select:focus-visible,
   overflow-y: auto;
   padding: 1px 3px var(--space-md) 1px;
 }
+.asset-group-heading { display: flex; min-width: 0; grid-column: 1 / -1; align-items: center; gap: 8px; min-height: 25px; margin: 8px 2px 0; color: #e3e8e2; }
+.asset-group-heading strong { font-size: 11px; font-weight: 700; letter-spacing: .1px; }
+.asset-group-chevron { position: relative; display: block; width: 8px; height: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; color: #aeb6ae; transform: rotate(45deg) translateY(-2px); }
+.folder-scope-bar { display: flex; min-width: 0; align-items: center; gap: 9px; min-height: 39px; padding: 5px 8px; border: 1px solid #3d4340; border-radius: 10px; background: #1c1f1d; }
+.folder-scope-back { display: inline-flex; min-width: 58px; height: 28px; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 1px solid #454b53; border-radius: 8px; background: #25282d; color: #dce3dc; font-size: 10px; cursor: pointer; }
+.folder-scope-back:hover { border-color: var(--accent); background: rgba(134,230,109,.12); color: var(--accent); }
+.folder-scope-back .icon-up { width: 7px; height: 7px; transform: rotate(45deg) translate(1px,1px); }
+.folder-scope-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.folder-scope-copy span { color: #858d86; font-size: 8px; line-height: 10px; }
+.folder-scope-copy strong { overflow: hidden; color: #eef3ed; font-size: 11px; line-height: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .asset-grid.grid-small { --card-min: 96px; }
 .asset-grid.grid-medium { --card-min: 128px; }
 .asset-grid.grid-large { --card-min: 176px; }
@@ -544,6 +554,15 @@ select:focus-visible,
 .folder-thumb { position: relative; background: #202226; }
 .folder-thumb::before { width: 47%; height: 32%; margin-top: -4%; border: 1.5px solid #9da4a0; border-radius: 3px 3px 2px 2px; background: #292c31; content: ""; box-shadow: 0 8px 0 4px #292c31; }
 .folder-thumb::after { position: absolute; top: 31%; left: 27%; width: 19%; height: 5px; border: 1.5px solid #9da4a0; border-bottom: 0; border-radius: 2px 2px 0 0; content: ""; }
+.folder-collage { position: absolute; z-index: 1; inset: 0; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-rows: repeat(2, minmax(0,1fr)); gap: 2px; padding: 4px; background: #202226; }
+.folder-collage-tile { display: grid; min-width: 0; min-height: 0; place-items: center; overflow: hidden; border-radius: 5px; background: #2b2e33; color: #9da59e; font-size: 7px; font-weight: 700; letter-spacing: .2px; }
+.folder-collage-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.folder-collage[data-count="1"] .folder-collage-tile { grid-column: 1 / -1; grid-row: 1 / -1; }
+.folder-collage[data-count="2"] .folder-collage-tile { grid-row: 1 / -1; }
+.folder-collage.is-empty { display: grid; place-items: center; padding: 0; }
+.folder-empty-icon { position: relative; display: block; width: 42px; height: 30px; border: 2px solid #9da59f; border-radius: 4px; background: #30343a; box-shadow: 0 7px 0 -3px #30343a; }
+.folder-empty-icon::before { position: absolute; top: -7px; left: 3px; width: 16px; height: 7px; border: 2px solid #9da59f; border-bottom: 0; border-radius: 4px 4px 0 0; content: ""; }
+.icon-folder-large { display: block; width: 100%; height: 100%; }
 .pin-badge { position: absolute; z-index: 4; top: 8px; left: 8px; width: 13px; height: 13px; transform: rotate(-35deg); }
 .pin-badge::before { position: absolute; top: 1px; left: 4px; width: 6px; height: 7px; border-radius: 5px 5px 2px 2px; background: var(--accent); content: ""; }
 .pin-badge::after { position: absolute; top: 7px; left: 6px; width: 1.5px; height: 6px; background: var(--accent); content: ""; }
@@ -1047,8 +1066,12 @@ body { background: var(--bg); }
 .filter-button { flex: 0 0 auto; white-space: nowrap; }
 .asset-grid:not(.is-list-view) { grid-template-columns: repeat(auto-fill,minmax(var(--card-min),1fr)) !important; }
 .asset-grid:not(.is-list-view) { grid-auto-rows: max-content; align-content: start; }
-.asset-grid.is-list-view { grid-auto-rows: 74px; align-content: start; }
+.asset-grid.is-list-view { grid-auto-rows: max-content; align-content: start; }
 .asset-grid.is-list-view .asset-card { min-height: 74px; }
+/* Group labels must keep their intrinsic height in list mode. The fixed row
+ * height belongs to media rows only; applying it to a section heading leaves
+ * a large blank band between folders and files. */
+.asset-grid.is-list-view .asset-group-heading { height: 25px; min-height: 25px; align-self: start; }
 .toolbar { display: grid; min-width: 0; grid-template-columns: auto minmax(0,1fr); }
 .toolbar::before { display: none; }
 .toolbar-left,
@@ -1088,7 +1111,7 @@ body { background: var(--bg); }
   .filter-row .result-count { display: inline; }
   .filter-row { gap: 3px; }
   .filter-button { padding: 0 7px; }
-  .asset-grid.is-list-view { grid-auto-rows: 62px; }
+  .asset-grid.is-list-view { grid-auto-rows: max-content; }
   .asset-grid.is-list-view .asset-card { min-height: 62px; grid-template-rows: 52px; }
 }
 @media (max-width: 520px) {
