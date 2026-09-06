@@ -1285,6 +1285,9 @@ body { background: var(--bg); }
 .label-choice.is-selected { outline-width: 1px; }
 .locations-popover.is-page-popover { top: 8px; right: 8px; bottom: 8px; left: 8px; max-height: none; overflow: auto; padding: 16px; }
 .locations-popover.is-page-popover .locations-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-content: start; gap: 6px; }
+.locations-popover.is-page-popover:not([hidden]) { animation: locations-drop 160ms ease-out; transform-origin: top center; }
+.locations-heading-actions { display: flex; align-items: center; gap: 8px; }
+@keyframes locations-drop { from { opacity: 0; transform: translateY(-10px) scaleY(.98); } to { opacity: 1; transform: translateY(0) scaleY(1); } }
 
 /* Timeline states are intentionally distinct: green in-point, amber out-point
  * and a quiet highlighted interval when both exist. */

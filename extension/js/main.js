@@ -101,7 +101,7 @@
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
       "selectAllButton", "searchToggleButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton", "locationsToolbarButton",
       "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomRange", "resultCount", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
-      "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
+      "statusText", "locationsPopover", "locationsList", "locationsBackButton", "closeLocationsPopover", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
       "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "clearLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
       "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerMediaLayer", "viewerBusy",
@@ -292,6 +292,8 @@
     }
     elements.addFolderButton.addEventListener("click", chooseFolder);
     elements.addFolderFromPopover.addEventListener("click", chooseFolder);
+    if (elements.locationsBackButton) { elements.locationsBackButton.addEventListener("click", leaveFolderScope); }
+    if (elements.closeLocationsPopover) { elements.closeLocationsPopover.addEventListener("click", function () { hidePopover(elements.locationsPopover, elements.locationsToolbarButton || elements.locationsButton); }); }
     elements.upFolderButton.addEventListener("click", leaveFolderScope);
     elements.toggleAllRootsButton.addEventListener("click", toggleAllRoots);
     if (elements.createFolderFromResultsButton) { elements.createFolderFromResultsButton.addEventListener("click", function () { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); openCreatePluginFolderDialog(); }); }
@@ -719,6 +721,7 @@
     elements.mountStatus.className = "status-dot " + (onlineCount === state.roots.length ? "is-online" : onlineCount ? "is-partial" : "is-offline");
     elements.toggleAllRootsButton.textContent = scanningRoots.length === state.roots.length && state.roots.length ? "取消全选" : "全选";
     elements.upFolderButton.hidden = !state.folderScope;
+    if (elements.locationsBackButton) { elements.locationsBackButton.hidden = !state.folderScope; }
   }
 
   function rootsForCurrentScan() {
@@ -2580,12 +2583,12 @@
     elements.assetGrid.style.setProperty("--favorite-size", (19 + ratio * 7).toFixed(2) + "px");
     elements.assetGrid.style.setProperty("--favorite-font", (12 + ratio * 5).toFixed(2) + "px");
     elements.assetGrid.style.setProperty("--label-size", (6 + ratio * 2).toFixed(2) + "px");
-    elements.assetGrid.style.setProperty("--zoom-thumb-size", (8 + ratio * 7).toFixed(2) + "px");
+    var zoomThumbSize = (6 + ratio * 9).toFixed(2) + "px";
+    elements.assetGrid.style.setProperty("--zoom-thumb-size", zoomThumbSize);
+    if (elements.zoomRange) { elements.zoomRange.style.setProperty("--zoom-thumb-size", zoomThumbSize); }
     elements.assetGrid.classList.toggle("is-mini-card", state.preferences.viewMode !== "list" && size <= 140);
     if (elements.zoomRange) {
-      elements.zoomRange.style.setProperty("--zoom-thumb-size", (8 + ratio * 7).toFixed(2) + "px");
-      elements.zoomRange.style.setProperty("--zoom-min-dot", (4 + ratio * 2).toFixed(2) + "px");
-      elements.zoomRange.style.setProperty("--zoom-max-dot", (8 + ratio * 4).toFixed(2) + "px");
+      elements.zoomRange.style.setProperty("--zoom-thumb-size", zoomThumbSize);
     }
   }
   function toggleViewMode() {
@@ -2598,7 +2601,7 @@
     elements.zoomRange.disabled = list;
     elements.zoomRange.closest(".zoom-control").classList.toggle("is-disabled", list);
     elements.zoomRange.setAttribute("aria-disabled", list ? "true" : "false");
-    elements.viewModeButton.classList.toggle("is-active", list);
+    elements.viewModeButton.classList.remove("is-active");
     elements.viewModeButton.querySelector("span").className = list ? "icon-view-list" : "icon-view-grid";
     elements.viewModeButton.setAttribute("aria-label", list ? "切换到卡片模式" : "切换到列表模式");
     syncCardStyle();
@@ -2615,7 +2618,7 @@
     elements.assetGrid.setAttribute("data-card-style", clean ? "clean" : "info");
     if (elements.cardStyleButton) {
       elements.cardStyleButton.hidden = state.preferences.viewMode === "list";
-      elements.cardStyleButton.classList.toggle("is-active", clean);
+      elements.cardStyleButton.classList.remove("is-active");
       elements.cardStyleButton.setAttribute("aria-pressed", clean ? "true" : "false");
       elements.cardStyleButton.setAttribute("aria-label", clean ? "切换到信息卡模式" : "切换到纯净卡模式");
     }
