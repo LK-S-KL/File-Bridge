@@ -799,7 +799,7 @@
       }
       armWatchdog();
       if (cancelSignal.cancelled) { clearTimeout(watchdog); resolve({ assets: [], warnings: [], truncated: false, offline: false, cancelled: true }); return; }
-      SeekLibrary.scanLibraryAsync(root.path, { fs: fs, path: path }, { maxFiles: MAX_SCAN_FILES, maxDepth: 10, batchSize: 40, includeDirectories: true, cancelSignal: cancelSignal }, function (snapshot) {
+      SeekLibrary.scanLibraryAsync(root.path, { fs: fs, path: path }, { maxFiles: MAX_SCAN_FILES, maxDepth: 10, batchSize: 40, includeDirectories: false, cancelSignal: cancelSignal }, function (snapshot) {
         armWatchdog(); progress(snapshot);
       }).then(function (result) {
         clearTimeout(watchdog); resolve(result);
@@ -851,14 +851,16 @@
         root.online = !result.offline;
         if (result.offline) {
           offline += 1;
-          result.assets = (state.libraryCache[root.id] || []).map(function (asset) { var cached = Object.assign({}, asset); cached.offline = true; return cached; });
+          result.assets = (state.libraryCache[root.id] || []).filter(function (asset) { return asset.type !== "folder"; }).map(function (asset) { var cached = Object.assign({}, asset); cached.offline = true; return cached; });
         } else {
+          result.assets = result.assets.filter(function (asset) { return asset.type !== "folder"; });
           state.libraryCache[root.id] = result.assets.map(function (asset) { return { name: asset.name, path: asset.path, relativePath: asset.relativePath, folder: asset.folder, extension: asset.extension, type: asset.type, size: asset.size, modifiedMs: asset.modifiedMs }; });
           cacheChanged = true;
         }
         if (result.truncated) { truncated += 1; }
         warnings += result.warnings.length;
         result.assets.forEach(function (asset) {
+          if (asset.type === "folder") { return; }
           var key = normalizeAssetKey(asset.path);
           if (seen[key]) { return; }
           seen[key] = true;
@@ -924,7 +926,7 @@
       ["EVO4-Pro_产品特写.mov", "video", 238412800], ["fnOS_界面录屏.mp4", "video", 98304000],
       ["Seek_封面主视觉.png", "image", 6021120], ["发布会_环境声.wav", "audio", 48128000],
       ["工作流示意图.jpg", "image", 3184128], ["用户采访_A机位.mp4", "video", 438412800],
-      ["fnOS_Neutral_Film.cube", "lut", 94682], ["品牌资产", "folder", 0]
+      ["fnOS_Neutral_Film.cube", "lut", 94682]
     ];
     if (window.location.search.indexOf("stress=1") !== -1) {
       examples = [];

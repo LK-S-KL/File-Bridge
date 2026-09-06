@@ -57,6 +57,7 @@ assert.match(mainSource, /directImport: true/, "Project screenshots must import 
 assert.match(mainSource, /selectionMode/, "Selection must enter an explicit check mode instead of selecting everything immediately");
 assert.match(mainSource, /pluginFolders/, "Plugin-owned folders must be persisted independently of local folders");
 assert.doesNotMatch(mainSource, /MAX_RENDERED_ASSETS/, "Search results must not stop at a fixed rendered-item cap");
+assert.match(mainSource, /includeDirectories:\s*false/, "Local filesystem folders must not become library cards");
 assert.match(mainSource, /media\.controls = false/, "The viewer must use one custom timeline instead of native duplicate controls");
 assert.doesNotMatch(indexSource, /scanModeSelect|本次浏览范围/, "Root selection must use direct checkboxes without a separate scan mode");
 assert.match(indexSource, /data-quality="auto"/, "The player quality menu must include Auto");
