@@ -7,6 +7,7 @@
     <title>LK‘s File Bridge</title>
     <link rel="stylesheet" href="css/panel.css" />
     <link rel="stylesheet" href="css/ui-4.3.css" />
+    <link rel="stylesheet" href="css/player-4.5.css" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -178,6 +179,7 @@
         <div id="viewerTimeline" class="viewer-timeline">
           <button id="viewerTimecode" class="viewer-timecode" type="button" title="切换时间码 / 帧数">00:00:00:00</button>
           <div id="timelineTrackWrap" class="timeline-track-wrap" title="点击定位；Shift+点击设置入点；Alt+点击设置出点；右键设置出点">
+            <span id="viewerBuffered" class="viewer-buffered" aria-hidden="true"></span>
             <input id="viewerScrubber" class="viewer-scrubber" type="range" min="0" max="1000" step="1" value="0" aria-label="播放位置" />
             <span id="viewerInMark" class="timeline-mark timeline-mark-in" hidden>I</span>
             <span id="viewerOutMark" class="timeline-mark timeline-mark-out" hidden>O</span>
@@ -192,7 +194,8 @@
             <div class="transport-right">
               <div class="volume-control"><button id="volumeButton" class="viewer-icon-button" type="button" title="音量" aria-label="静音或恢复音量"><span class="icon-volume" aria-hidden="true"></span></button><input id="volumeRange" type="range" min="0" max="1" step="0.05" value="1" aria-label="音量" /></div>
               <button id="screenshotButton" class="viewer-icon-button" type="button" title="截图入项目" aria-label="截图入项目"><span class="icon-camera" aria-hidden="true"></span></button>
-              <div class="quality-control"><button id="qualityButton" class="viewer-icon-button quality-button" type="button" title="播放质量" aria-label="播放质量" aria-expanded="false">HD</button><div id="viewerQualityMenu" class="quality-menu" hidden><button type="button" data-quality="auto">AUTO</button><button type="button" data-quality="source">SOURCE</button><button type="button" data-quality="4k">4K</button><button type="button" data-quality="1080">1080</button><button type="button" data-quality="720">720</button><button type="button" data-quality="480">480</button><button type="button" data-quality="360">360</button></div></div>
+              <div class="quality-control"><button id="qualityButton" class="viewer-icon-button quality-button" type="button" title="分辨率" aria-label="分辨率" aria-expanded="false">AUTO<span class="icon-chevron-down" aria-hidden="true"></span></button><div id="viewerQualityMenu" class="quality-menu" hidden><button type="button" data-quality="auto">AUTO</button><button type="button" data-quality="source">原始</button><button type="button" data-quality="4k">4K</button><button type="button" data-quality="1080">1080p</button><button type="button" data-quality="720">720p</button><button type="button" data-quality="540">540p</button><button type="button" data-quality="480">480p</button><button type="button" data-quality="360">360p</button></div></div>
+              <div class="speed-control"><button id="speedButton" class="viewer-icon-button speed-button" type="button" title="播放速度" aria-label="播放速度" aria-expanded="false">1×<span class="icon-chevron-down" aria-hidden="true"></span></button><div id="viewerSpeedMenu" class="speed-menu" hidden><button type="button" data-speed="0.5">0.5×</button><button type="button" data-speed="0.75">0.75×</button><button type="button" data-speed="1">1×</button><button type="button" data-speed="1.25">1.25×</button><button type="button" data-speed="1.5">1.5×</button><button type="button" data-speed="2">2×</button></div></div>
             </div>
           </div>
         </div>

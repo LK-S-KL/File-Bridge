@@ -1,0 +1,399 @@
+{
+  "version": "4.5.0",
+  "scope": "player",
+  "unit": "px",
+  "inherits": "../design-tokens.json",
+  "colors": {
+    "accent": "#84e36c",
+    "neutral": "#9ba8a0",
+    "foreground": "#e0e6e2",
+    "surface": "#111713",
+    "border": "#303b33",
+    "track": "#37433b",
+    "buffered": "#58665b",
+    "activeBackground": "#233722",
+    "hoverBackground": "#28312b",
+    "pressedBackground": "#365942",
+    "hoverAccent": "#8df273",
+    "pressedAccent": "#79d063"
+  },
+  "geometry": {
+    "iconViewBox": "0 0 24 24",
+    "iconStrokeWidth": 1.75,
+    "iconLineCap": "round",
+    "iconLineJoin": "round",
+    "iconSize": 20,
+    "iconSizeVariants": [
+      16,
+      20,
+      24
+    ],
+    "buttonSize": 32,
+    "primaryButtonSize": 36,
+    "progressTrackHeight": 3,
+    "progressTrackHeightHover": 5,
+    "progressTrackHeightDragging": 5,
+    "progressHitHeight": 24,
+    "progressThumbDiameter": 8,
+    "progressThumbDiameterHover": 10,
+    "progressThumbDiameterDragging": 12,
+    "standardWidth": 1024,
+    "standardHeight": 132,
+    "compactHeight": 176,
+    "compactBreakpoint": 560,
+    "progressInset": 16,
+    "currentTimecodeY": 28,
+    "progressY": 56,
+    "controlsY": 80,
+    "compactSecondaryY": 126,
+    "rightCluster": {
+      "alignment": "right",
+      "rightInset": 16,
+      "wideWidth": 328,
+      "compactWidth": 312,
+      "wideStart": "panel-width-minus-344",
+      "compactStart": "panel-width-minus-328",
+      "wideItems": [
+        {
+          "id": "volume",
+          "x": 0,
+          "width": 32
+        },
+        {
+          "id": "volume-range",
+          "x": 40,
+          "width": 88,
+          "trackX": 44,
+          "trackWidth": 76
+        },
+        {
+          "id": "camera",
+          "x": 136,
+          "width": 32
+        },
+        {
+          "id": "resolution",
+          "x": 182,
+          "width": 82
+        },
+        {
+          "id": "speed",
+          "x": 280,
+          "width": 48
+        }
+      ],
+      "compactItems": [
+        {
+          "id": "volume",
+          "x": 0,
+          "width": 32
+        },
+        {
+          "id": "volume-range",
+          "x": 40,
+          "width": 74,
+          "trackX": 44,
+          "trackWidth": 62
+        },
+        {
+          "id": "camera",
+          "x": 122,
+          "width": 32
+        },
+        {
+          "id": "resolution",
+          "x": 168,
+          "width": 82
+        },
+        {
+          "id": "speed",
+          "x": 264,
+          "width": 48
+        }
+      ],
+      "spacingRange": [
+        8,
+        18
+      ],
+      "buttonHeight": 32,
+      "individualBackplate": "hover-or-open-only"
+    }
+  },
+  "typography": {
+    "fontFamily": "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+    "timecodeFontFamily": "Menlo,Consolas,monospace",
+    "timecodeNumeric": "tabular-nums",
+    "externalFontRequired": false,
+    "timecodeFontSize": 13
+  },
+  "buttonStates": {
+    "default": {
+      "foregroundToken": "neutral",
+      "background": "transparent"
+    },
+    "hover": {
+      "foregroundToken": "foreground",
+      "background": "subtle-neutral-overlay",
+      "tooltip": true
+    },
+    "selected": {
+      "foregroundToken": "accent",
+      "backgroundToken": "activeBackground",
+      "persistent": true,
+      "toggleSemantics": "aria-pressed",
+      "applicableTo": "persistent-toggles-only; screenshot-is-momentary",
+      "rightControlsBackground": "transparent-unless-hover-or-open"
+    },
+    "disabled": {
+      "appearance": "reduced-opacity",
+      "actionable": false,
+      "retainPosition": true
+    },
+    "pressed": {
+      "appearance": "deeper-background",
+      "persistent": false,
+      "release": "return-to-default-or-selected",
+      "screenshot": "momentary-press-then-completion-or-failure-feedback"
+    },
+    "focus": {
+      "appearance": "independent-visible-outline",
+      "replaceOtherStates": false
+    },
+    "playPause": "glyph-reflects-next-action; pause-glyph-is-not-selected-state"
+  },
+  "timecode": {
+    "knownFpsFormat": "HH:MM:SS:FF",
+    "unknownFpsFormat": "seconds-based",
+    "numericStyle": "monospace-tabular",
+    "inferFps": false,
+    "inferDropFrame": false,
+    "sample": {
+      "fps": 25,
+      "currentFrames": 308,
+      "currentLabel": "00:00:12:08",
+      "durationFrames": 1725,
+      "durationLabel": "00:01:09:00",
+      "metadataSource": "design-example-only"
+    }
+  },
+  "progress": {
+    "minimum": 0,
+    "maximum": "duration",
+    "clamp": true,
+    "endpointsInclusive": true,
+    "click": "seek-to-pointer-position",
+    "hover": "show-prospective-timecode-without-seeking",
+    "tooltipBounds": "clamp-to-panel-edges",
+    "drag": "preview-pending-position",
+    "release": "commit-position-and-restore-pre-drag-playing-or-paused-state",
+    "escape": "cancel-drag-and-restore-pre-drag-position",
+    "nonDragTimecodes": "retain-current-playback-and-total-duration"
+  },
+  "controls": {
+    "transportOrder": [
+      "previous-item",
+      "play-pause",
+      "next-item",
+      "loop-current-item"
+    ],
+    "secondaryOrder": [
+      "volume-mute",
+      "volume-range",
+      "camera",
+      "resolution",
+      "speed"
+    ],
+    "previousNext": {
+      "unit": "media-item",
+      "disableAtBoundary": true
+    },
+    "loop": {
+      "scope": "current-media-item",
+      "default": false,
+      "selectedToken": "accent"
+    },
+    "volume": {
+      "minimum": 0,
+      "maximum": 1,
+      "zeroIsMuted": true,
+      "unmute": "restore-last-nonzero-volume",
+      "noAudio": "disable-and-retain-position",
+      "narrowLayout": "inline-range-always-visible",
+      "id": "volume",
+      "rangeId": "volume-range",
+      "popover": false,
+      "wideRangeWidth": 76,
+      "compactRangeWidth": 62
+    },
+    "speed": {
+      "options": [
+        0.5,
+        0.75,
+        1,
+        1.25,
+        1.5,
+        2
+      ],
+      "default": 1,
+      "selectedValueVisible": true,
+      "preservePosition": true,
+      "id": "speed",
+      "accessibleName": "播放速度",
+      "displayLabelExample": "1×",
+      "showChevron": true,
+      "currentOption": "checkmark"
+    },
+    "screenshot": {
+      "id": "camera",
+      "icon": "camera",
+      "accessibleName": "截图",
+      "capture": "current-decoded-video-frame",
+      "sourcePreference": "full-source-frame-when-available",
+      "inheritPreviewResolutionDowngrade": false,
+      "preservePlayhead": true,
+      "preservePlaybackUnlessHostRequiresPause": true,
+      "unavailableFrame": "disable-action",
+      "pressed": "momentary",
+      "persistentSelected": false,
+      "completion": "toast",
+      "failure": "explicit-feedback",
+      "savePath": "host-callback-decides",
+      "fileFormat": "host-callback-decides"
+    },
+    "resolution": {
+      "id": "resolution",
+      "accessibleName": "分辨率",
+      "closedLabelExamples": [
+        "AUTO",
+        "1080p"
+      ],
+      "showChevron": true,
+      "default": "AUTO",
+      "exampleOptions": [
+        "AUTO",
+        "原始",
+        "1080p",
+        "720p",
+        "540p"
+      ],
+      "optionsSource": "host-supported-preview-renditions",
+      "unavailableOptions": "disabled-or-omitted",
+      "allowUpscalingAssumption": false,
+      "autoMeaning": "adaptive-preview-resolution",
+      "changes": "preview-rendition-only",
+      "preserve": [
+        "playhead",
+        "play-state",
+        "loop",
+        "volume",
+        "speed"
+      ],
+      "pending": "busy-indicator; commit-label-after-success",
+      "currentOption": "checkmark"
+    }
+  },
+  "playbackStates": {
+    "default": "ready-and-paused",
+    "playing": "pause-action-visible",
+    "hover": "prospective-timecode-visible",
+    "scrubbing": "pending-position-visible",
+    "muted": "mute-glyph-visible",
+    "loop": "current-item-loop-selected",
+    "disabled": "unavailable-controls-retain-space; no-fabricated-progress",
+    "ended": "play-restarts-at-zero-unless-loop-active",
+    "buffering": "retain-pause-action-when-available",
+    "error": "show-error-and-retry-action",
+    "resolutionOpen": "host-supported-preview-resolution-options-visible",
+    "speedOpen": "playback-speed-options-visible",
+    "screenshot": "momentary-press-and-capture-feedback"
+  },
+  "responsive": {
+    "referenceWidths": [
+      1024,
+      736,
+      568,
+      480,
+      392,
+      360
+    ],
+    "wideTimecodes": "current-and-total-on-one-line",
+    "timecodeWrapAtOrBelow": null,
+    "compactReferenceWidth": 360,
+    "compactRows": [
+      "timecodes",
+      "full-width-progress",
+      "transport",
+      "secondary"
+    ],
+    "overflowPolicy": "grow-height; no-overlap; no-horizontal-page-overflow",
+    "volumeRangeWhenSpaceLimited": "retain-inline-range; split-control-rows",
+    "hideCoreActionsToFit": false,
+    "compactTimecodes": "current and total fit a single line at 360px; transport and right controls split into two rows",
+    "splitControlsAtOrBelow": 560,
+    "wideHeight": 132,
+    "compactHeight": 176,
+    "secondaryAlignment": "right"
+  },
+  "accessibility": {
+    "iconButtonsRequireAccessibleName": true,
+    "persistentToggleAttribute": "aria-pressed",
+    "popoverAttribute": "aria-expanded",
+    "rangeImplementation": "native-range-recommended",
+    "rangeKeyboard": {
+      "arrowKeysKnownFps": "one-frame",
+      "arrowKeysUnknownFps": "host-defined-seconds-step",
+      "home": "start",
+      "end": "end",
+      "optionalPageOrShiftStepSeconds": 5,
+      "frameNavigationPresentation": "native-range-keyboard-only; no-extra-control"
+    },
+    "space": "toggle-play-only-within-focused-player-and-outside-text-entry",
+    "overrideGlobalCepShortcuts": false,
+    "popover": "Escape-or-outside-click-closes; restore-trigger-focus; close-peer-popovers",
+    "rightControlNames": {
+      "volume": "静音 / 取消静音",
+      "volume-range": "音量",
+      "camera": "截图",
+      "resolution": "分辨率",
+      "speed": "播放速度"
+    },
+    "conciseValueSelectors": "resolution and speed retain title and aria-label while visible labels show selected values"
+  },
+  "sourceFiles": {
+    "default": "components/default.svg",
+    "playing": "components/playing.svg",
+    "hover": "components/hover.svg",
+    "scrubbing": "components/scrubbing.svg",
+    "muted": "components/muted.svg",
+    "loop": "components/loop.svg",
+    "disabled": "components/disabled.svg",
+    "ended": "components/ended.svg",
+    "error": "components/error.svg",
+    "compact": "components/compact.svg",
+    "loading": "components/loading.svg",
+    "screenshot": "components/screenshot.svg",
+    "hoverStart": "components/hover-start.svg",
+    "hoverEnd": "components/hover-end.svg",
+    "width360": "components/width-360.svg",
+    "width392": "components/width-392.svg",
+    "width480": "components/width-480.svg",
+    "width568": "components/width-568.svg",
+    "width736": "components/width-736.svg",
+    "resolutionOpen": "components/resolution-open.svg",
+    "speedOpen": "components/speed-open.svg",
+    "resolutionPopover": "components/resolution-popover.svg",
+    "speedPopover": "components/speed-popover.svg",
+    "overview": "previews/overview.svg",
+    "defaultPreview": "previews/default.svg",
+    "compactPreview": "previews/compact.svg",
+    "iconsAndStates": "previews/icons-and-states.svg",
+    "rightControls": "previews/right-controls.svg"
+  },
+  "delivery": {
+    "format": "editable-svg-and-independent-currentColor-icons",
+    "remoteDependencies": false,
+    "pngRole": "visual-reference-only",
+    "runtimeIncluded": false,
+    "cepHostVerified": false
+  }
+}

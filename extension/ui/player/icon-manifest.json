@@ -1,0 +1,331 @@
+{
+  "version": "4.5.0",
+  "scope": "player",
+  "icons": [
+    {
+      "id": "skip-back",
+      "name": "上一段",
+      "filename": "../icons/skip-back.svg",
+      "defaultSize": 20,
+      "interaction": "切换上一素材",
+      "sizeFiles": {
+        "16": "../sizes/16/skip-back.svg",
+        "20": "../sizes/20/skip-back.svg",
+        "24": "../sizes/24/skip-back.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/skip-back.svg",
+        "hover": "../states/hover/skip-back.svg",
+        "selected": "../states/selected/skip-back.svg",
+        "disabled": "../states/disabled/skip-back.svg",
+        "pressed": "../states/pressed/skip-back.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "play",
+      "name": "播放",
+      "filename": "../icons/play.svg",
+      "defaultSize": 20,
+      "interaction": "开始播放",
+      "sizeFiles": {
+        "16": "../sizes/16/play.svg",
+        "20": "../sizes/20/play.svg",
+        "24": "../sizes/24/play.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/play.svg",
+        "hover": "../states/hover/play.svg",
+        "selected": "../states/selected/play.svg",
+        "disabled": "../states/disabled/play.svg",
+        "pressed": "../states/pressed/play.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "pause",
+      "name": "暂停",
+      "filename": "../icons/pause.svg",
+      "defaultSize": 20,
+      "interaction": "暂停播放",
+      "sizeFiles": {
+        "16": "../sizes/16/pause.svg",
+        "20": "../sizes/20/pause.svg",
+        "24": "../sizes/24/pause.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/pause.svg",
+        "hover": "../states/hover/pause.svg",
+        "selected": "../states/selected/pause.svg",
+        "disabled": "../states/disabled/pause.svg",
+        "pressed": "../states/pressed/pause.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "skip-forward",
+      "name": "下一段",
+      "filename": "../icons/skip-forward.svg",
+      "defaultSize": 20,
+      "interaction": "切换下一素材",
+      "sizeFiles": {
+        "16": "../sizes/16/skip-forward.svg",
+        "20": "../sizes/20/skip-forward.svg",
+        "24": "../sizes/24/skip-forward.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/skip-forward.svg",
+        "hover": "../states/hover/skip-forward.svg",
+        "selected": "../states/selected/skip-forward.svg",
+        "disabled": "../states/disabled/skip-forward.svg",
+        "pressed": "../states/pressed/skip-forward.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "repeat",
+      "name": "循环当前片段",
+      "filename": "../icons/repeat.svg",
+      "defaultSize": 20,
+      "interaction": "循环模式切换",
+      "sizeFiles": {
+        "16": "../sizes/16/repeat.svg",
+        "20": "../sizes/20/repeat.svg",
+        "24": "../sizes/24/repeat.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/repeat.svg",
+        "hover": "../states/hover/repeat.svg",
+        "selected": "../states/selected/repeat.svg",
+        "disabled": "../states/disabled/repeat.svg",
+        "pressed": "../states/pressed/repeat.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "volume",
+      "name": "音量",
+      "filename": "../icons/volume.svg",
+      "defaultSize": 20,
+      "interaction": "静音切换；取消静音恢复上次非零音量",
+      "sizeFiles": {
+        "16": "../sizes/16/volume.svg",
+        "20": "../sizes/20/volume.svg",
+        "24": "../sizes/24/volume.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/volume.svg",
+        "hover": "../states/hover/volume.svg",
+        "selected": "../states/selected/volume.svg",
+        "disabled": "../states/disabled/volume.svg",
+        "pressed": "../states/pressed/volume.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "volume-low",
+      "name": "低音量",
+      "filename": "../icons/volume-low.svg",
+      "defaultSize": 20,
+      "interaction": "音量较低时显示",
+      "sizeFiles": {
+        "16": "../sizes/16/volume-low.svg",
+        "20": "../sizes/20/volume-low.svg",
+        "24": "../sizes/24/volume-low.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/volume-low.svg",
+        "hover": "../states/hover/volume-low.svg",
+        "selected": "../states/selected/volume-low.svg",
+        "disabled": "../states/disabled/volume-low.svg",
+        "pressed": "../states/pressed/volume-low.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "volume-x",
+      "name": "取消静音",
+      "filename": "../icons/volume-x.svg",
+      "defaultSize": 20,
+      "interaction": "取消静音并恢复上次非零音量",
+      "sizeFiles": {
+        "16": "../sizes/16/volume-x.svg",
+        "20": "../sizes/20/volume-x.svg",
+        "24": "../sizes/24/volume-x.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/volume-x.svg",
+        "hover": "../states/hover/volume-x.svg",
+        "selected": "../states/selected/volume-x.svg",
+        "disabled": "../states/disabled/volume-x.svg",
+        "pressed": "../states/pressed/volume-x.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "camera",
+      "name": "截取当前帧",
+      "filename": "../icons/camera.svg",
+      "defaultSize": 20,
+      "interaction": "截取当前解码帧；不改变播放时间和速度",
+      "sizeFiles": {
+        "16": "../sizes/16/camera.svg",
+        "20": "../sizes/20/camera.svg",
+        "24": "../sizes/24/camera.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/camera.svg",
+        "hover": "../states/hover/camera.svg",
+        "selected": "../states/selected/camera.svg",
+        "disabled": "../states/disabled/camera.svg",
+        "pressed": "../states/pressed/camera.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "chevron-down",
+      "name": "下拉操作",
+      "filename": "../icons/chevron-down.svg",
+      "defaultSize": 20,
+      "interaction": "打开分辨率或倍速选项",
+      "sizeFiles": {
+        "16": "../sizes/16/chevron-down.svg",
+        "20": "../sizes/20/chevron-down.svg",
+        "24": "../sizes/24/chevron-down.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/chevron-down.svg",
+        "hover": "../states/hover/chevron-down.svg",
+        "selected": "../states/selected/chevron-down.svg",
+        "disabled": "../states/disabled/chevron-down.svg",
+        "pressed": "../states/pressed/chevron-down.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "rotate-ccw",
+      "name": "重新播放",
+      "filename": "../icons/rotate-ccw.svg",
+      "defaultSize": 20,
+      "interaction": "复用左侧主按钮，播放结束时重播，加载错误时重试",
+      "sizeFiles": {
+        "16": "../sizes/16/rotate-ccw.svg",
+        "20": "../sizes/20/rotate-ccw.svg",
+        "24": "../sizes/24/rotate-ccw.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/rotate-ccw.svg",
+        "hover": "../states/hover/rotate-ccw.svg",
+        "selected": "../states/selected/rotate-ccw.svg",
+        "disabled": "../states/disabled/rotate-ccw.svg",
+        "pressed": "../states/pressed/rotate-ccw.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "circle-alert",
+      "name": "播放错误",
+      "filename": "../icons/circle-alert.svg",
+      "defaultSize": 20,
+      "interaction": "加载或解码失败提示",
+      "sizeFiles": {
+        "16": "../sizes/16/circle-alert.svg",
+        "20": "../sizes/20/circle-alert.svg",
+        "24": "../sizes/24/circle-alert.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/circle-alert.svg",
+        "hover": "../states/hover/circle-alert.svg",
+        "selected": "../states/selected/circle-alert.svg",
+        "disabled": "../states/disabled/circle-alert.svg",
+        "pressed": "../states/pressed/circle-alert.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    },
+    {
+      "id": "loader-circle",
+      "name": "载入中",
+      "filename": "../icons/loader-circle.svg",
+      "defaultSize": 20,
+      "interaction": "加载进度未确定时显示",
+      "sizeFiles": {
+        "16": "../sizes/16/loader-circle.svg",
+        "20": "../sizes/20/loader-circle.svg",
+        "24": "../sizes/24/loader-circle.svg"
+      },
+      "stateFiles": {
+        "default": "../states/default/loader-circle.svg",
+        "hover": "../states/hover/loader-circle.svg",
+        "selected": "../states/selected/loader-circle.svg",
+        "disabled": "../states/disabled/loader-circle.svg",
+        "pressed": "../states/pressed/loader-circle.svg"
+      },
+      "viewBox": "0 0 24 24",
+      "strokeWidth": 1.75
+    }
+  ],
+  "rightControls": [
+    {
+      "id": "volume",
+      "name": "音量",
+      "icon": "volume",
+      "mutedIcon": "volume-x"
+    },
+    {
+      "id": "volume-range",
+      "name": "音量进度条",
+      "type": "native-range"
+    },
+    {
+      "id": "camera",
+      "name": "截图",
+      "icon": "camera"
+    },
+    {
+      "id": "resolution",
+      "name": "分辨率切换",
+      "value": "AUTO",
+      "options": [
+        "AUTO",
+        "原始",
+        "1080p",
+        "720p",
+        "540p"
+      ],
+      "note": "显示宿主实际支持的预览档位，AUTO为自动预览分辨率"
+    },
+    {
+      "id": "speed",
+      "name": "倍速播放",
+      "value": "1×",
+      "options": [
+        0.5,
+        0.75,
+        1,
+        1.25,
+        1.5,
+        2
+      ]
+    }
+  ],
+  "timecode": {
+    "fps": 25,
+    "sampleOnly": true,
+    "currentFrames": 308,
+    "totalFrames": 1725,
+    "current": "00:00:12:08",
+    "total": "00:01:09:00"
+  }
+}

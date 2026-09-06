@@ -6,6 +6,7 @@ const css = fs.readFileSync(new URL("../extension/css/panel.css", require("node:
 const main = fs.readFileSync(new URL("../extension/js/main.js", require("node:url").pathToFileURL(__filename)), "utf8");
 const html = fs.readFileSync(new URL("../extension/index.html", require("node:url").pathToFileURL(__filename)), "utf8");
 const uiCss = fs.readFileSync(new URL("../extension/css/ui-4.3.css", require("node:url").pathToFileURL(__filename)), "utf8");
+const playerCss = fs.readFileSync(new URL("../extension/css/player-4.5.css", require("node:url").pathToFileURL(__filename)), "utf8");
 
 test("card grid keeps intrinsic rows and 16:9 thumbnails", () => {
   assert.match(css, /\.asset-thumb\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
@@ -107,4 +108,23 @@ test("UI 4.3 toolbar keeps the designed control groups", () => {
   assert.match(uiCss, /\.toolbar-left \.sort-trigger\s*\{[^}]*min-width:\s*72px/s);
   assert.match(uiCss, /\.ui-icon\[data-icon="download"\]/);
   assert.match(uiCss, /\.preview-dock\s*\{/);
+});
+
+test("player 4.5 follows the supplied five-control layout", () => {
+  assert.match(html, /id="viewerBuffered"/);
+  assert.match(html, /id="speedButton"/);
+  assert.match(html, /id="viewerSpeedMenu"/);
+  assert.match(html, /data-speed="0\.5"/);
+  assert.match(html, /data-speed="2"/);
+  assert.match(html, /data-quality="540"/);
+  assert.ok(html.indexOf('href="css/player-4.5.css"') > html.indexOf('href="css/ui-4.3.css"'));
+  assert.match(playerCss, /\.viewer-timeline\s*\{[^}]*min-height:\s*132px[^}]*grid-template-rows:\s*28px 24px 1fr/s);
+  assert.match(playerCss, /\.viewer-timecode\s*\{[^}]*justify-self:\s*center[^}]*font:\s*13px\/22px Menlo/s);
+  assert.match(playerCss, /\.viewer-buffered\s*\{/);
+  assert.match(playerCss, /\.transport-right\s*\{[^}]*margin-left:\s*auto/s);
+  assert.match(playerCss, /\.volume-control input\s*\{[^}]*width:\s*88px/s);
+  assert.match(playerCss, /@media \(max-width:\s*560px\)[\s\S]*min-height:\s*176px[\s\S]*\.transport-right\s*\{[^}]*width:\s*312px/s);
+  assert.match(main, /function\s+chooseViewerSpeed\s*\(event\)/);
+  assert.match(main, /media\.playbackRate\s*=\s*viewerState\.playbackRate/);
+  assert.match(main, /elements\.timelineTrackWrap\.style\.setProperty\("--viewer-buffered"/);
 });

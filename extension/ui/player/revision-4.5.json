@@ -1,0 +1,25 @@
+{
+  "version": "4.5.0",
+  "rightControls": [
+    "volume",
+    "volume-range",
+    "camera",
+    "resolution",
+    "speed"
+  ],
+  "resolution": {
+    "default": "AUTO",
+    "meaning": "automatic-preview-resolution"
+  },
+  "screenshot": {
+    "icon": "camera",
+    "meaning": "capture-current-video-frame"
+  },
+  "removedPlayerControls": [
+    "fullscreen",
+    "more",
+    "frame-step",
+    "host-preview-mode"
+  ],
+  "layout": "right-aligned; secondary controls wrap into own row at widths <=560px"
+}

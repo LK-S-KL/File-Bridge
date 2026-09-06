@@ -732,13 +732,14 @@
         "4k": "3840:2160",
         "1080": "1920:1080",
         "720": "1280:720",
+        "540": "960:540",
         "480": "854:480",
         "360": "640:360"
       };
       return {
         name: dimensions[value] !== undefined ? value : "1080",
         scale: dimensions[value] !== undefined ? dimensions[value] : "1920:1080",
-        bitrate: value === "4k" || value === "source" ? "16M" : value === "1080" ? "8M" : value === "720" ? "5M" : value === "480" ? "2.5M" : "1.5M"
+        bitrate: value === "4k" || value === "source" ? "16M" : value === "1080" ? "8M" : value === "720" ? "5M" : value === "540" ? "3.5M" : value === "480" ? "2.5M" : "1.5M"
       };
     }
 

@@ -78,6 +78,7 @@
     frameRequest: 0,
     isSeeking: false,
     timeDisplayMode: "timecode",
+    playbackRate: 1,
     sourcePlayable: false,
     autoProxyReady: "",
     autoKeepSource: false,
@@ -114,8 +115,8 @@
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
       "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyAssetsButton", "cutAssetsButton", "pasteAssetsButton", "copyLabelButton", "pasteLabelButton", "clearLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
       "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerMediaLayer", "viewerBusy",
-      "viewerTimeline", "timelineTrackWrap", "viewerScrubber", "viewerInMark", "viewerOutMark", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode",
-      "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
+      "viewerTimeline", "timelineTrackWrap", "viewerBuffered", "viewerScrubber", "viewerInMark", "viewerOutMark", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode",
+      "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "speedButton", "viewerSpeedMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
       "closeLutViewerButton", "lutCanvas", "lutDivider", "lutSplitRange", "lutOpacityRange", "lutCompareToggle", "lutSplitMode", "lutSliderMode", "installLutButton", "lutApplyStatus", "fileActionDialog", "dialogTitle",
       "dialogMessage", "renameField", "renameInput", "dialogCancelButton", "dialogConfirmButton"
     ].forEach(function (id) { elements[id] = byId(id); });
@@ -520,8 +521,10 @@
       elements.timelineTrackWrap.addEventListener("contextmenu", handleTimelineMouse);
     }
     elements.loopButton.addEventListener("click", toggleViewerLoop);
-    elements.qualityButton.addEventListener("click", function (event) { event.stopPropagation(); elements.viewerQualityMenu.hidden = !elements.viewerQualityMenu.hidden; elements.qualityButton.setAttribute("aria-expanded", elements.viewerQualityMenu.hidden ? "false" : "true"); });
+    elements.qualityButton.addEventListener("click", function (event) { event.stopPropagation(); closeViewerMenus("quality"); elements.viewerQualityMenu.hidden = !elements.viewerQualityMenu.hidden; elements.qualityButton.setAttribute("aria-expanded", elements.viewerQualityMenu.hidden ? "false" : "true"); });
     elements.viewerQualityMenu.addEventListener("click", chooseViewerQuality);
+    elements.speedButton.addEventListener("click", function (event) { event.stopPropagation(); closeViewerMenus("speed"); elements.viewerSpeedMenu.hidden = !elements.viewerSpeedMenu.hidden; elements.speedButton.setAttribute("aria-expanded", elements.viewerSpeedMenu.hidden ? "false" : "true"); });
+    elements.viewerSpeedMenu.addEventListener("click", chooseViewerSpeed);
     elements.volumeButton.addEventListener("click", toggleViewerMute);
     elements.volumeRange.addEventListener("input", updateViewerVolume);
     elements.viewerTimecode.addEventListener("click", toggleViewerTimeDisplay);
@@ -548,6 +551,7 @@
       if (elements.toolbarSearchPopover && !elements.toolbarSearchPopover.contains(event.target) && event.target !== elements.searchToggleButton) { hideSearchPopover(); }
       if (elements.zoomControl && !elements.zoomControl.contains(event.target)) { elements.zoomControl.classList.remove("is-open"); }
       if (!elements.viewerQualityMenu.contains(event.target) && event.target !== elements.qualityButton) { elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false"); }
+      if (!elements.viewerSpeedMenu.contains(event.target) && event.target !== elements.speedButton) { elements.viewerSpeedMenu.hidden = true; elements.speedButton.setAttribute("aria-expanded", "false"); }
       if (!elements.contextMenu.contains(event.target)) { closeContextMenu(); }
     });
     document.addEventListener("keydown", function (event) {
@@ -2298,6 +2302,7 @@
     viewerState.hasIn = false; viewerState.hasOut = false;
     viewerState.loop = false;
     viewerState.profile = "auto";
+    viewerState.playbackRate = 1;
     viewerState.audioProxyPath = "";
     viewerState.audioProxyStatus = "idle";
     viewerState.timeDisplayMode = "timecode"; viewerState.sourcePlayable = false; viewerState.autoProxyReady = ""; viewerState.autoKeepSource = false;
@@ -2308,10 +2313,16 @@
     elements.viewer.hidden = false;
     elements.viewerBusy.hidden = true;
     elements.viewerTimeline.hidden = asset.type === "image";
-    elements.screenshotButton.hidden = state.hostId !== "PPRO" || asset.type !== "video";
+    elements.screenshotButton.hidden = asset.type !== "video";
+    elements.screenshotButton.disabled = state.hostId !== "PPRO";
+    elements.screenshotButton.setAttribute("aria-disabled", state.hostId !== "PPRO" ? "true" : "false");
     elements.qualityButton.hidden = asset.type !== "video";
-    elements.qualityButton.textContent = "AUTO";
+    setViewerQualityLabel("auto");
+    setViewerSpeedLabel(1);
+    elements.volumeRange.value = "0.72";
+    elements.volumeButton.classList.remove("is-muted");
     Array.prototype.forEach.call(elements.viewerQualityMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item.getAttribute("data-quality") === "auto"); });
+    Array.prototype.forEach.call(elements.viewerSpeedMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item.getAttribute("data-speed") === "1"); });
     elements.loopButton.classList.remove("is-active");
     elements.loopButton.setAttribute("aria-pressed", "false");
     elements.viewerScrubber.value = "0";
@@ -2320,7 +2331,7 @@
     updateViewerMarks();
     if (asset.type === "video") {
       media = document.createElement("video");
-      media.controls = false; media.preload = "auto"; media.playsInline = true; media.draggable = state.hostId === "PPRO";
+      media.controls = false; media.preload = "auto"; media.playsInline = true; media.volume = .72; media.muted = false; media.draggable = state.hostId === "PPRO";
       media.setAttribute("draggable", state.hostId === "PPRO" ? "true" : "false");
       media.addEventListener("click", toggleViewerPlayback);
       elements.viewerMediaLayer.appendChild(media);
@@ -2336,7 +2347,7 @@
     } else if (asset.type === "audio") {
       audioViewer = document.createElement("div"); audioViewer.className = "audio-viewer";
       waveform = document.createElement("div"); waveform.className = "generic-thumb"; waveform.textContent = "正在生成波形…"; audioViewer.appendChild(waveform);
-      media = document.createElement("audio"); media.src = SeekLibrary.fileUrl(asset.path); media.controls = false; media.preload = "auto"; media.draggable = state.hostId === "PPRO"; audioViewer.appendChild(media); elements.viewerMediaLayer.appendChild(audioViewer);
+      media = document.createElement("audio"); media.src = SeekLibrary.fileUrl(asset.path); media.controls = false; media.preload = "auto"; media.volume = .72; media.muted = false; media.draggable = state.hostId === "PPRO"; audioViewer.appendChild(media); elements.viewerMediaLayer.appendChild(audioViewer);
       viewerState.media = media; bindViewerMedia(media);
       safePlay(media);
       if (mediaTools) { mediaTools.waveformFor(asset.path).then(function (filePath) { var image; if (viewerState.asset !== asset || !document.documentElement.contains(waveform)) { return; } image = document.createElement("img"); image.src = SeekLibrary.fileUrl(filePath); image.alt = asset.name + " 波形"; image.draggable = false; waveform.replaceWith(image); }).catch(function () { if (document.documentElement.contains(waveform)) { waveform.textContent = "无法生成波形"; } }); }
@@ -2367,7 +2378,7 @@
     if (viewerState.frameRequest) { cancelAnimationFrame(viewerState.frameRequest); viewerState.frameRequest = 0; }
     Array.prototype.forEach.call(elements.viewerMediaLayer.querySelectorAll("video,audio"), function (media) { media.pause(); media.removeAttribute("src"); media.load(); });
     elements.viewerMediaLayer.innerHTML = ""; elements.viewer.hidden = true; elements.viewerBusy.hidden = true;
-    elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false");
+    closeViewerMenus();
     viewerState.asset = null; viewerState.media = null; viewerState.metadata = null; viewerState.audioProxyPath = ""; viewerState.audioProxyStatus = "idle";
   }
 
@@ -2411,8 +2422,45 @@
     var button = event.target.closest("button[data-quality]");
     if (!button) { return; }
     Array.prototype.forEach.call(elements.viewerQualityMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item === button); });
-    elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false");
+    closeViewerMenus();
     loadViewerProfile(button.getAttribute("data-quality"), true);
+  }
+
+  function closeViewerMenus(except) {
+    if (except !== "quality" && elements.viewerQualityMenu) {
+      elements.viewerQualityMenu.hidden = true;
+      elements.qualityButton.setAttribute("aria-expanded", "false");
+    }
+    if (except !== "speed" && elements.viewerSpeedMenu) {
+      elements.viewerSpeedMenu.hidden = true;
+      elements.speedButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function setViewerQualityLabel(profile) {
+    var label = profile === "source" ? "原始" : profile === "auto" ? "AUTO" : String(profile).toUpperCase() + (String(profile).toLowerCase() === "4k" ? "" : "p");
+    elements.qualityButton.firstChild.nodeValue = label;
+  }
+
+  function setViewerSpeedLabel(rate) {
+    elements.speedButton.firstChild.nodeValue = formatPlaybackRate(rate);
+  }
+
+  function formatPlaybackRate(rate) {
+    var value = Number(rate) || 1;
+    return String(value).replace(/\.0$/, "") + "×";
+  }
+
+  function chooseViewerSpeed(event) {
+    var button = event.target.closest("button[data-speed]");
+    var rate;
+    if (!button || !viewerState.media) { return; }
+    rate = Math.max(.25, Math.min(4, Number(button.getAttribute("data-speed")) || 1));
+    viewerState.playbackRate = rate;
+    viewerState.media.playbackRate = rate;
+    setViewerSpeedLabel(rate);
+    Array.prototype.forEach.call(elements.viewerSpeedMenu.querySelectorAll("button"), function (item) { item.classList.toggle("is-active", item === button); });
+    closeViewerMenus();
   }
 
   function toggleViewerMute() {
@@ -2444,7 +2492,7 @@
     var targetProfile;
     if (!asset || asset.type !== "video" || !media) { return; }
     viewerState.profile = profile;
-    elements.qualityButton.textContent = profile === "source" ? "SRC" : profile === "auto" ? "AUTO" : String(profile).toUpperCase();
+    setViewerQualityLabel(profile);
     token = ++viewerState.loadToken;
     clearTimeout(viewerState.autoTimer); viewerState.autoTimer = null;
     if (profile === "source") {
@@ -2487,6 +2535,7 @@
     if (!media || !filePath) { return; }
     media.addEventListener("loadedmetadata", function restorePosition() {
       if (media !== viewerState.media) { return; }
+      media.playbackRate = viewerState.playbackRate || 1;
       if (isFinite(media.duration)) { media.currentTime = Math.max(0, Math.min(Number(currentTime) || 0, Math.max(0, media.duration - .001))); }
       if (shouldPlay) { safePlay(media); }
       updateViewerTimeline();
@@ -2513,10 +2562,21 @@
   function updateViewerTimeline() {
     var media = viewerState.media;
     var duration;
+    var progress;
+    var buffered = 0;
     if (!media || typeof media.currentTime !== "number") { return; }
     duration = isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
     elements.viewerTimecode.textContent = viewerState.timeDisplayMode === "frames" ? Math.max(0, Math.round(media.currentTime * viewerFrameRate())) + " F" : formatViewerTimecode(media.currentTime);
-    if (!viewerState.isSeeking && duration) { elements.viewerScrubber.value = String(Math.round(media.currentTime / duration * 1000)); }
+    if (duration) {
+      progress = Math.max(0, Math.min(100, media.currentTime / duration * 100));
+      elements.timelineTrackWrap.style.setProperty("--viewer-progress", progress + "%");
+      if (media.buffered && media.buffered.length) {
+        try { buffered = Math.max(0, Math.min(100, media.buffered.end(media.buffered.length - 1) / duration * 100)); } catch (error) { buffered = progress; }
+      }
+      elements.timelineTrackWrap.style.setProperty("--viewer-buffered", Math.max(progress, buffered) + "%");
+      if (elements.viewerBuffered) { elements.viewerBuffered.style.width = Math.max(progress, buffered) + "%"; }
+      if (!viewerState.isSeeking) { elements.viewerScrubber.value = String(Math.round(progress * 10)); }
+    }
   }
 
   function startViewerClock() {
