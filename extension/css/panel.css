@@ -1070,3 +1070,224 @@ body { background: var(--bg); }
   .submenu-row:hover > .context-submenu,
   .submenu-row:focus-within > .context-submenu { display: grid; }
 }
+
+/* V5 UI refinements
+ * Keep the existing DOM hooks stable for CEP, while making the browsing
+ * surface denser and giving card/list modes an explicit visual language.
+ */
+.topbar {
+  position: relative;
+  z-index: 12;
+  min-height: 0;
+  height: 0;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.topbar .brand { display: none; }
+.topbar #refreshButton { position: absolute; top: 7px; right: 88px; width: 25px; height: 25px; flex-basis: 25px; border-radius: 7px; background: rgba(24,25,28,.82); font-size: 15px; }
+.location-bar { padding-right: 45px; }
+
+/* The selection action strip is intentionally gone. Selection remains visible
+ * on the card itself and all actions stay available from the context menu. */
+.selection-dock,
+.selection-dock[hidden] { display: none !important; }
+
+.toolbar-left { justify-content: center; align-items: center; }
+.toolbar-left .tool-button { flex: 0 0 32px; }
+#cardStyleButton { display: grid; }
+.icon-card-style { position: relative; display: block; width: 15px; height: 13px; margin: auto; border: 1.5px solid currentColor; border-radius: 3px; }
+.icon-card-style::before { position: absolute; top: 3px; right: 3px; left: 3px; height: 1px; background: currentColor; box-shadow: 0 3px 0 currentColor; content: ""; opacity: .85; }
+.icon-card-style::after { position: absolute; top: 3px; left: 3px; width: 2px; height: 2px; border-radius: 50%; background: currentColor; content: ""; }
+
+/* Result count owns the right edge of the filter row; select-all is an
+ * explicit check control immediately beside it. */
+.filter-row .result-count { margin-left: auto; }
+.result-actions-button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #3f444b;
+  border-radius: 6px;
+  background: #1d1f23;
+  color: #aab1aa;
+  font-size: 10px;
+  cursor: pointer;
+}
+.result-actions-button:hover,
+.result-actions-button[aria-expanded="true"] { border-color: var(--accent); background: rgba(134,230,109,.13); color: var(--accent); }
+.result-actions-popover { width: 142px; min-width: 142px; display: grid; gap: 2px; padding: 6px; }
+.result-actions-popover .menu-action { height: 28px; margin: 0; padding: 0 8px; border-radius: 7px; font-size: 10px; }
+.result-actions-popover .menu-action:hover { background: #2d3036; }
+.toolbar-search { position: fixed; z-index: 64; width: min(320px, calc(100vw - 16px)); padding: 7px; border-color: #4b5058; border-radius: 11px; background: #222429; box-shadow: 0 18px 42px rgba(0,0,0,.56); }
+.toolbar-search .search-field { height: 34px; border-color: #3e4249; border-radius: 8px; background: #16171a; }
+.toolbar-search .search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(134,230,109,.09); }
+.toolbar-search .search-field input { width: 100%; height: 29px; font-size: 10px; }
+.sort-popover { gap: 5px; padding: 10px; }
+.sort-popover .popover-heading { margin-bottom: 0; }
+.sort-popover .field-label { gap: 0; }
+.select-all-toggle {
+  position: relative;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #4a4f57;
+  border-radius: 7px;
+  background: #202226;
+  color: #9ba29b;
+  cursor: pointer;
+}
+.select-all-toggle:hover,
+.select-all-toggle:focus-visible { border-color: var(--accent); color: var(--text); }
+.select-all-toggle[aria-pressed="true"],
+.select-all-toggle.is-active { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.select-all-toggle .icon-select-all { width: 12px; height: 12px; }
+.select-all-toggle[data-hint]::after {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 7px);
+  right: 0;
+  width: max-content;
+  padding: 5px 8px;
+  border: 1px solid #4a4e56;
+  border-radius: 7px;
+  background: #25272c;
+  box-shadow: 0 10px 24px rgba(0,0,0,.42);
+  color: #edf1ec;
+  content: attr(data-hint);
+  font-size: 9px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 100ms ease, transform 100ms ease;
+  white-space: nowrap;
+}
+.select-all-toggle[data-hint]:hover::after,
+.select-all-toggle[data-hint]:focus-visible::after { opacity: 1; transform: translateY(0); }
+
+/* A native range is clearer when the endpoint glyphs are dots, not boxed
+ * thumbnails. The main controller can update --zoom-thumb-size as the value
+ * changes; the fallback remains a compact thumb in older CEP Chromium. */
+.zoom-control { position: relative; min-width: 92px; gap: 6px; padding: 0 6px; }
+.zoom-control > .icon-thumb-small,
+.zoom-control > .icon-thumb-large { display: none; }
+.zoom-control::before,
+.zoom-control::after { display: block; flex: 0 0 auto; border-radius: 50%; background: #8f9891; content: ""; }
+.zoom-control::before { width: var(--zoom-min-dot, 5px); height: var(--zoom-min-dot, 5px); }
+.zoom-control::after { width: var(--zoom-max-dot, 10px); height: var(--zoom-max-dot, 10px); }
+.zoom-control input { min-width: 0; height: 18px; margin: 0; accent-color: var(--accent); }
+.zoom-control input::-webkit-slider-runnable-track { height: 3px; border-radius: 999px; background: #4d5550; }
+.zoom-control input::-webkit-slider-thumb { width: var(--zoom-thumb-size, 10px); height: var(--zoom-thumb-size, 10px); margin-top: -3.5px; border: 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px rgba(134,230,109,.12); -webkit-appearance: none; }
+.zoom-control input:disabled { opacity: .32; }
+.zoom-control.is-disabled { opacity: .48; }
+
+/* Card rendering: remove content-visibility containment because it can leave
+ * asynchronously generated posters blank in CEP's older Chromium. */
+.asset-card { content-visibility: visible; contain: layout; }
+.asset-grid.is-clean-card .asset-copy,
+.asset-grid[data-card-style="clean"] .asset-copy,
+.asset-grid.is-clean-card .favorite-toggle,
+.asset-grid[data-card-style="clean"] .favorite-toggle,
+.asset-grid.is-clean-card .asset-type,
+.asset-grid[data-card-style="clean"] .asset-type,
+.asset-grid.is-clean-card .color-label,
+.asset-grid[data-card-style="clean"] .color-label,
+.asset-grid.is-clean-card .duration-badge,
+.asset-grid[data-card-style="clean"] .duration-badge,
+.asset-grid.is-clean-card .proxy-badge,
+.asset-grid[data-card-style="clean"] .proxy-badge,
+.asset-grid.is-clean-card .offline-badge,
+.asset-grid[data-card-style="clean"] .offline-badge,
+.asset-grid.is-clean-card .pin-badge,
+.asset-grid[data-card-style="clean"] .pin-badge { display: none !important; }
+.asset-grid.is-clean-card .asset-card,
+.asset-grid[data-card-style="clean"] .asset-card { grid-template-rows: auto; padding: 4px; }
+.asset-grid.is-clean-card .asset-thumb,
+.asset-grid[data-card-style="clean"] .asset-thumb { border-color: #30343b; }
+
+/* List mode is an information-dense view, not a second zoomable gallery. */
+.asset-grid.is-list-view .asset-card { grid-template-columns: 96px minmax(0,1fr); grid-template-rows: 55px; gap: 8px; padding: 4px; }
+.asset-grid.is-list-view .asset-thumb { width: 96px; height: 55px; }
+.asset-grid.is-list-view .asset-name { font-size: 10px; line-height: 13px; font-weight: 600; }
+.asset-grid.is-list-view .asset-details { font-size: 7px; line-height: 10px; }
+.asset-grid.is-list-view .asset-type { right: 4px; bottom: 4px; padding: 1px 3px; font-size: 6px; line-height: 8px; }
+.asset-grid.is-list-view .favorite-toggle { top: 4px; right: 4px; width: 17px; height: 17px; font-size: 11px; }
+.asset-grid.is-list-view .color-label { right: 27px; bottom: 5px; width: 5px; height: 5px; box-shadow: none; }
+.asset-grid.is-list-view .pin-badge { top: 5px; left: 5px; transform: scale(.76) rotate(-35deg); transform-origin: top left; }
+.asset-type { max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pin is a recognisable pushpin, not a microphone silhouette. */
+.pin-badge { top: 7px; left: 7px; width: 15px; height: 15px; border-radius: 50%; transform: rotate(-36deg); background: rgba(134,230,109,.14); box-shadow: 0 0 0 1px rgba(134,230,109,.72), 0 0 12px rgba(134,230,109,.25); }
+.pin-badge::before { top: 2px; left: 4px; width: 7px; height: 6px; border: 1.5px solid var(--accent); border-radius: 50% 50% 2px 2px; background: transparent; }
+.pin-badge::after { top: 7px; left: 7px; width: 1.5px; height: 7px; background: var(--accent); box-shadow: 2px 4px 0 -0.25px var(--accent); }
+
+/* Submenus pop out on hover. Scrollbars are suppressed so the menu never
+ * reads like a nested document; long folder lists still retain wheel scroll. */
+.context-menu { max-height: none; overflow: visible; scrollbar-width: none; }
+.context-menu::-webkit-scrollbar,
+.context-submenu::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.context-submenu { overflow-x: hidden; scrollbar-width: none; }
+.transcode-menu { position: relative; padding: 0; }
+.transcode-menu > button { display: flex; width: 100%; height: 31px; align-items: center; justify-content: space-between; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font-size: 11px; cursor: pointer; }
+.transcode-menu > button:hover { background: #2d3036; }
+.transcode-menu .context-submenu { min-width: 92px; }
+.transcode-menu:hover > .context-submenu,
+.transcode-menu:focus-within > .context-submenu { display: grid; }
+.context-menu .info-command span { display: none; }
+.submenu-row > button.is-disabled { color: #626870; cursor: default; opacity: .55; }
+.submenu-row > button.is-disabled:hover { background: transparent; }
+.label-choices { gap: 5px; }
+.label-choice { width: 12px; height: 12px; border-radius: 3px; }
+.label-choice.is-selected { outline-width: 1px; }
+
+/* Timeline states are intentionally distinct: green in-point, amber out-point
+ * and a quiet highlighted interval when both exist. */
+.timeline-track-wrap { --timeline-in: 0%; --timeline-out: 100%; }
+.timeline-track-wrap.has-range::after,
+.timeline-track-wrap[data-has-range="true"]::after { position: absolute; z-index: 1; top: 5px; bottom: 5px; left: var(--timeline-in); width: max(0px, calc(var(--timeline-out) - var(--timeline-in))); border-radius: 3px; background: rgba(134,230,109,.28); content: ""; pointer-events: none; }
+.timeline-track-wrap.has-range .viewer-scrubber,
+.timeline-track-wrap[data-has-range="true"] .viewer-scrubber { accent-color: #b3ef8d; }
+.timeline-mark { box-shadow: 0 0 0 2px rgba(134,230,109,.16); }
+.timeline-mark-out { box-shadow: 0 0 0 2px rgba(255,178,89,.17); }
+.mark-button { display: none; }
+
+/* Restore the familiar Adobe speaker/camera silhouettes at compact sizes. */
+.icon-volume { width: 16px; height: 14px; }
+.icon-volume::before { top: 5px; left: 0; width: 4px; height: 5px; clip-path: polygon(0 25%, 40% 25%, 100% 0, 100% 100%, 40% 75%, 0 75%); background: currentColor; }
+.icon-volume::after { top: 2px; left: 6px; width: 7px; height: 10px; border: 0; border-right: 1.7px solid currentColor; border-radius: 0 100% 100% 0; box-shadow: 3px 0 0 -1px currentColor; transform: none; }
+.volume-control .is-muted .icon-volume::after { border-right-color: var(--danger); box-shadow: none; transform: rotate(-35deg); }
+.icon-camera { width: 16px; height: 12px; border-width: 1.4px; border-radius: 3px; }
+.icon-camera::before { top: -4px; left: 3px; width: 7px; height: 4px; border-width: 1.4px; }
+.icon-camera::after { top: 2px; left: 5px; width: 5px; height: 5px; border-width: 1.4px; box-shadow: inset 0 0 0 1px currentColor; }
+
+@media (max-width: 620px) {
+  .topbar #refreshButton { top: 6px; right: 84px; width: 22px; height: 22px; flex-basis: 22px; }
+  .location-bar { padding-right: 39px; }
+  .toolbar-left { gap: 3px; }
+  .toolbar-left .tool-button { flex-basis: 29px; width: 29px; }
+  .toolbar-right { gap: 7px; }
+  .zoom-control { min-width: 88px; }
+}
+@media (max-width: 390px) {
+  .toolbar-left { grid-template-columns: repeat(auto-fit, minmax(29px, 1fr)); }
+  .toolbar-left .tool-button { width: 100%; }
+  .filter-row { min-width: 0; }
+  .filter-row .result-count { margin-left: auto; }
+  .select-all-toggle { width: 23px; height: 23px; flex-basis: 23px; }
+  .asset-grid.is-list-view .asset-card { grid-template-columns: 78px minmax(0,1fr); grid-template-rows: 46px; }
+  .asset-grid.is-list-view .asset-thumb { width: 78px; height: 46px; }
+}
+@media (max-width: 350px) {
+  .asset-grid:not(.is-list-view) { --card-min: 0px; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .asset-card { min-width: 0; }
+}
+@media (max-width: 520px) {
+  .context-menu { max-height: calc(100vh - 12px); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
+}

@@ -93,19 +93,50 @@
   function cacheElements() {
     [
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
-      "selectAllButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "packageProjectButton",
-      "searchInput", "clearSearchButton", "filterBadge", "zoomRange", "resultCount", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "selectionDock", "selectionTitle", "selectionMeta", "selectionPreviewButton", "selectionImportButton", "selectionPlaceButton", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
-      "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "toggleAllRootsButton", "createFolderButton", "filterPopover",
+      "selectAllButton", "searchToggleButton", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton",
+      "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomRange", "resultCount", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage",
+      "statusText", "locationsPopover", "locationsList", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
       "resetFiltersButton", "sizeFilter", "extensionFilter", "labelFilter", "labelFilterChoices", "rootFilter", "metadataOnlyFilter",
-      "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
+      "contextMenu", "insertSubmenuRow", "contextAePlaceButton", "contextLabelChoices", "copyLabelButton", "pasteLabelButton", "clearLabelButton", "folderSubmenuRow", "folderSubmenu", "metadataHover", "metadataPanel", "metadataTitle", "metadataPreview", "metadataLoading",
       "metadataList", "closeMetadataButton", "viewer", "viewerTitle", "viewerSubtitle", "closeViewerButton", "viewerStage", "viewerMediaLayer", "viewerBusy",
-      "viewerTimeline", "viewerScrubber", "viewerInMark", "viewerOutMark", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode", "markInButton",
-      "markOutButton", "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
+      "viewerTimeline", "timelineTrackWrap", "viewerScrubber", "viewerInMark", "viewerOutMark", "frameBackButton", "playPauseButton", "frameForwardButton", "viewerTimecode",
+      "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
       "closeLutViewerButton", "lutCanvas", "lutSplitRange", "lutOpacityRange", "installLutButton", "fileActionDialog", "dialogTitle",
       "dialogMessage", "renameField", "renameInput", "dialogCancelButton", "dialogConfirmButton"
     ].forEach(function (id) { elements[id] = byId(id); });
-    elements.searchField = document.querySelector(".search-field");
+    elements.searchField = elements.toolbarSearchPopover ? elements.toolbarSearchPopover.querySelector(".search-field") : document.querySelector(".search-field");
     elements.filterButtons = document.querySelectorAll(".filter-button");
+  }
+
+  function ensureContextMenuExtensions() {
+    var labelMenu;
+    var labelTitle;
+    var info;
+    var infoHint;
+    var favorite;
+    var clear;
+    if (!elements.contextMenu) { return; }
+    labelMenu = elements.contextMenu.querySelector(".label-menu");
+    labelTitle = labelMenu && labelMenu.children && labelMenu.children[0] && labelMenu.children[0].tagName === "SPAN" ? labelMenu.children[0] : null;
+    if (labelTitle) { labelTitle.textContent = "色彩标签"; }
+    info = elements.contextMenu.querySelector("button.info-command");
+    infoHint = info && info.querySelector("span");
+    if (infoHint) { infoHint.remove(); }
+    favorite = elements.contextMenu.querySelector('[data-command="favorite"]');
+    if (favorite && !favorite.getAttribute("data-label-normalized")) {
+      favorite.setAttribute("data-label-normalized", "true");
+      favorite.textContent = "收藏";
+    }
+    clear = elements.contextMenu.querySelector('[data-command="clear-label"]');
+    if (!clear && elements.pasteLabelButton) {
+      clear = document.createElement("button");
+      clear.type = "button";
+      clear.id = "clearLabelButton";
+      clear.setAttribute("data-command", "clear-label");
+      clear.textContent = "清除标签";
+      elements.pasteLabelButton.insertAdjacentElement("afterend", clear);
+    }
+    elements.clearLabelButton = clear || null;
   }
 
   function stableRootId(rootPath) {
@@ -226,7 +257,8 @@
     elements.addFolderFromPopover.addEventListener("click", chooseFolder);
     elements.upFolderButton.addEventListener("click", leaveFolderScope);
     elements.toggleAllRootsButton.addEventListener("click", toggleAllRoots);
-    elements.createFolderButton.addEventListener("click", openCreateFolderDialog);
+    if (elements.createFolderFromResultsButton) { elements.createFolderFromResultsButton.addEventListener("click", function () { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); openCreateFolderDialog(); }); }
+    if (elements.uploadFilesButton) { elements.uploadFilesButton.addEventListener("click", function () { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); chooseExternalFiles(); }); }
     elements.locationsList.addEventListener("click", function (event) {
       var remove = event.target.closest("button[data-root-remove]");
       var select = event.target.closest("button[data-root-select]");
@@ -250,6 +282,12 @@
       applyFilters();
       elements.searchInput.focus();
     });
+    if (elements.searchToggleButton) {
+      elements.searchToggleButton.addEventListener("click", function (event) {
+        event.stopPropagation();
+        toggleSearchPopover();
+      });
+    }
 
     Array.prototype.forEach.call(elements.filterButtons, function (button) {
       button.addEventListener("click", function () {
@@ -266,8 +304,10 @@
       applyFilters();
     });
     elements.selectAllButton.addEventListener("click", toggleSelectAllAssets);
+    if (elements.resultActionsButton) { elements.resultActionsButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.resultActionsPopover, elements.resultActionsButton); }); }
     elements.sortButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.sortPopover, elements.sortButton); });
     elements.viewModeButton.addEventListener("click", toggleViewMode);
+    if (elements.cardStyleButton) { elements.cardStyleButton.addEventListener("click", toggleCardStyle); }
     elements.packageProjectButton.addEventListener("click", packageCurrentProject);
     elements.sortSelect.value = state.preferences.sortBy;
     elements.sortSelect.addEventListener("change", function () {
@@ -306,12 +346,18 @@
     elements.assetGrid.addEventListener("click", function (event) {
       var card = closestCard(event.target);
       var favorite = event.target.closest("button.favorite-toggle");
+      var clickedAsset;
       if (favorite && card) {
         event.preventDefault(); event.stopPropagation();
         toggleFavorite(assetForId(card.getAttribute("data-asset-id")));
         return;
       }
-      if (card) { selectAsset(card.getAttribute("data-asset-id"), { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey }); }
+      if (card) {
+        clickedAsset = assetForId(card.getAttribute("data-asset-id"));
+        selectAsset(card.getAttribute("data-asset-id"), { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey });
+        if (!clickedAsset || clickedAsset.type !== "video") { stopAudioHover(); }
+        if (clickedAsset && clickedAsset.type === "video" && !event.metaKey && !event.ctrlKey && !event.shiftKey) { playSelectionAudio(clickedAsset); }
+      }
     });
     elements.assetGrid.addEventListener("dblclick", function (event) {
       var card = closestCard(event.target);
@@ -348,17 +394,6 @@
     elements.assetGrid.addEventListener("dragleave", function (event) { var card = closestCard(event.target); if (card && (!event.relatedTarget || !card.contains(event.relatedTarget))) { card.classList.remove("is-drop-target"); } });
     elements.assetGrid.addEventListener("drop", handleLibraryDrop);
 
-    elements.selectionPreviewButton.addEventListener("click", function () {
-      var asset = selectedAsset();
-      if (asset) { openViewer(asset); }
-    });
-    elements.selectionImportButton.addEventListener("click", function () {
-      runHostActionForAssets(selectedAssets(), false, "current").catch(function () {});
-    });
-    elements.selectionPlaceButton.addEventListener("click", function () {
-      runHostActionForAssets(selectedAssets(), true, "current").catch(function () {});
-    });
-
     elements.contextMenu.addEventListener("click", handleContextCommand);
     elements.contextMenu.addEventListener("mouseover", function (event) {
       var item = event.target.closest("button.info-command");
@@ -383,10 +418,14 @@
     elements.closeViewerButton.addEventListener("click", closeViewer);
     elements.viewerStage.addEventListener("dragstart", startViewerDrag);
     elements.playPauseButton.addEventListener("click", toggleViewerPlayback);
-    elements.frameBackButton.addEventListener("click", function () { stepViewerFrame(-1); });
-    elements.frameForwardButton.addEventListener("click", function () { stepViewerFrame(1); });
-    elements.markInButton.addEventListener("click", markViewerIn);
-    elements.markOutButton.addEventListener("click", markViewerOut);
+    elements.frameBackButton.addEventListener("click", function () { navigateViewerAsset(-1); });
+    elements.frameForwardButton.addEventListener("click", function () { navigateViewerAsset(1); });
+    if (elements.markInButton) { elements.markInButton.addEventListener("click", markViewerIn); }
+    if (elements.markOutButton) { elements.markOutButton.addEventListener("click", markViewerOut); }
+    if (elements.timelineTrackWrap) {
+      elements.timelineTrackWrap.addEventListener("click", handleTimelineMouse);
+      elements.timelineTrackWrap.addEventListener("contextmenu", handleTimelineMouse);
+    }
     elements.loopButton.addEventListener("click", toggleViewerLoop);
     elements.qualityButton.addEventListener("click", function (event) { event.stopPropagation(); elements.viewerQualityMenu.hidden = !elements.viewerQualityMenu.hidden; elements.qualityButton.setAttribute("aria-expanded", elements.viewerQualityMenu.hidden ? "false" : "true"); });
     elements.viewerQualityMenu.addEventListener("click", chooseViewerQuality);
@@ -408,6 +447,8 @@
       if (!elements.locationsPopover.contains(event.target) && event.target !== elements.locationsButton) { hidePopover(elements.locationsPopover, elements.locationsButton); }
       if (!elements.sortPopover.contains(event.target) && event.target !== elements.sortButton) { hidePopover(elements.sortPopover, elements.sortButton); }
       if (!elements.filterPopover.contains(event.target) && event.target !== elements.filterButton) { hidePopover(elements.filterPopover, elements.filterButton); }
+      if (elements.resultActionsPopover && !elements.resultActionsPopover.contains(event.target) && event.target !== elements.resultActionsButton) { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); }
+      if (elements.toolbarSearchPopover && !elements.toolbarSearchPopover.contains(event.target) && event.target !== elements.searchToggleButton) { hideSearchPopover(); }
       if (!elements.viewerQualityMenu.contains(event.target) && event.target !== elements.qualityButton) { elements.viewerQualityMenu.hidden = true; elements.qualityButton.setAttribute("aria-expanded", "false"); }
       if (!elements.contextMenu.contains(event.target)) { closeContextMenu(); }
     });
@@ -426,7 +467,7 @@
       else if (!elements.lutViewer.hidden) { closeLutViewer(); }
       else if (!elements.viewer.hidden) { closeViewer(); }
       else if (!elements.metadataPanel.hidden) { closeMetadata(); }
-      else { closeContextMenu(); hidePopover(elements.locationsPopover, elements.locationsButton); hidePopover(elements.sortPopover, elements.sortButton); hidePopover(elements.filterPopover, elements.filterButton); }
+      else { closeContextMenu(); hidePopover(elements.locationsPopover, elements.locationsButton); hidePopover(elements.sortPopover, elements.sortButton); hidePopover(elements.filterPopover, elements.filterButton); if (elements.resultActionsPopover) { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); } hideSearchPopover(); }
     });
     document.addEventListener("keydown", function (event) {
       var asset;
@@ -452,14 +493,18 @@
   }
 
   function togglePopover(popover, trigger) {
-    var show = popover.hidden;
+    var show;
     var rect;
+    if (!popover || !trigger) { return; }
+    show = popover.hidden;
     hidePopover(elements.locationsPopover, elements.locationsButton);
     hidePopover(elements.sortPopover, elements.sortButton);
     hidePopover(elements.filterPopover, elements.filterButton);
+    if (elements.resultActionsPopover && popover !== elements.resultActionsPopover) { hidePopover(elements.resultActionsPopover, elements.resultActionsButton); }
+    if (elements.toolbarSearchPopover && popover !== elements.toolbarSearchPopover) { hideSearchPopover(); }
     popover.hidden = !show;
     trigger.setAttribute("aria-expanded", show ? "true" : "false");
-    if (show && (popover === elements.sortPopover || popover === elements.filterPopover)) {
+    if (show && (popover === elements.sortPopover || popover === elements.filterPopover || popover === elements.resultActionsPopover)) {
       rect = trigger.getBoundingClientRect();
       popover.style.maxHeight = Math.max(48, window.innerHeight - 16) + "px";
       popover.style.top = Math.max(8, Math.min(window.innerHeight - popover.offsetHeight - 8, rect.bottom + 7)) + "px";
@@ -469,8 +514,58 @@
   }
 
   function hidePopover(popover, trigger) {
+    if (!popover) { return; }
     popover.hidden = true;
-    trigger.setAttribute("aria-expanded", "false");
+    if (trigger) { trigger.setAttribute("aria-expanded", "false"); }
+  }
+
+  function toggleSearchPopover() {
+    var show = elements.toolbarSearchPopover.hidden;
+    var rect;
+    var left;
+    var top;
+    if (show) {
+      hidePopover(elements.locationsPopover, elements.locationsButton);
+      hidePopover(elements.sortPopover, elements.sortButton);
+      hidePopover(elements.filterPopover, elements.filterButton);
+      hidePopover(elements.resultActionsPopover, elements.resultActionsButton);
+    }
+    elements.toolbarSearchPopover.hidden = !show;
+    elements.searchToggleButton.setAttribute("aria-expanded", show ? "true" : "false");
+    elements.searchToggleButton.classList.toggle("is-active", show);
+    if (show) {
+      rect = elements.searchToggleButton.getBoundingClientRect();
+      left = Math.max(8, Math.min(window.innerWidth - elements.toolbarSearchPopover.offsetWidth - 8, rect.left));
+      top = Math.max(8, Math.min(window.innerHeight - elements.toolbarSearchPopover.offsetHeight - 8, rect.bottom + 7));
+      elements.toolbarSearchPopover.style.left = left + "px";
+      elements.toolbarSearchPopover.style.top = top + "px";
+      elements.searchInput.focus();
+    }
+    state.preferences.searchOpen = show;
+    schedulePreferencePersist();
+  }
+
+  function hideSearchPopover() {
+    if (!elements.toolbarSearchPopover) { return; }
+    elements.toolbarSearchPopover.hidden = true;
+    if (elements.searchToggleButton) {
+      elements.searchToggleButton.setAttribute("aria-expanded", "false");
+      elements.searchToggleButton.classList.remove("is-active");
+    }
+    if (state.preferences.searchOpen) { state.preferences.searchOpen = false; schedulePreferencePersist(); }
+  }
+
+  function chooseExternalFiles() {
+    var result;
+    var destination = currentDestination();
+    if (!destination || !assetOps) { showNotice("请先勾选一个可用素材位置。", true, 4000); return; }
+    if (!window.cep || !window.cep.fs || !window.cep.fs.showOpenDialogEx) { showNotice("当前环境无法打开文件选择器。", true, 4500); return; }
+    result = window.cep.fs.showOpenDialogEx(true, false, "上传素材到当前路径", destination.path, []);
+    if (!result || result.err !== 0 || !result.data || !result.data.length) { return; }
+    showNotice("正在复制 " + result.data.length + " 项素材…", false, 0);
+    assetOps.copyExternalFiles({ roots: state.roots, rootId: destination.rootId, destinationPath: destination.path, sourcePaths: result.data, onProgress: showOperationProgress }).then(function () {
+      showNotice("素材已上传到当前路径。", false, 3500); scanAssets();
+    }).catch(function (error) { showNotice("上传失败：" + friendlyError(error), true, 6500); });
   }
 
   function chooseFolder() {
@@ -571,14 +666,12 @@
     });
     if (!state.roots.some(function (root) { return root.id === state.filters.rootId; })) { state.filters.rootId = "all"; }
     elements.rootFilter.value = state.filters.rootId;
-    var activeRoot = state.roots.filter(function (root) { return root.id === state.preferences.activeRootId; })[0] || state.roots[0];
     var scanningRoots = rootsForCurrentScan();
     elements.rootLabel.textContent = state.folderScope ? state.folderScope.path : scanningRoots.length === 1 ? scanningRoots[0].path : scanningRoots.length ? scanningRoots.length + " 组素材位置" : "未选择素材位置";
     elements.rootLabel.title = state.roots.map(function (root) { return root.path; }).join("\n");
     elements.mountStatus.className = "status-dot " + (onlineCount === state.roots.length ? "is-online" : onlineCount ? "is-partial" : "is-offline");
     elements.toggleAllRootsButton.textContent = scanningRoots.length === state.roots.length && state.roots.length ? "取消全选" : "全选";
     elements.upFolderButton.hidden = !state.folderScope;
-    elements.createFolderButton.disabled = !activeRoot || activeRoot.enabled === false;
   }
 
   function rootsForCurrentScan() {
@@ -729,7 +822,7 @@
     var examples = [
       ["EVO4-Pro_产品特写.mov", "video", 238412800], ["fnOS_界面录屏.mp4", "video", 98304000],
       ["Seek_封面主视觉.png", "image", 6021120], ["发布会_环境声.wav", "audio", 48128000],
-      ["NAS_工作流示意图.jpg", "image", 3184128], ["用户采访_A机位.mp4", "video", 438412800],
+      ["工作流示意图.jpg", "image", 3184128], ["用户采访_A机位.mp4", "video", 438412800],
       ["fnOS_Neutral_Film.cube", "lut", 94682], ["品牌资产", "folder", 0]
     ];
     if (window.location.search.indexOf("stress=1") !== -1) {
@@ -742,7 +835,7 @@
       return { id: "preview:" + index, domId: "preview-" + index, name: example[0], path: state.roots[0].path + "/" + example[0], relativePath: example[0], folder: "团队素材预览", extension: example[0].split(".").pop().toLowerCase(), type: example[1], size: example[2], modifiedMs: Date.now() - index * 3600000, rootId: "preview", rootPath: state.roots[0].path, rootLabel: state.roots[0].label };
     });
     state.assets[0].mediaMetadata = {
-      format: "QuickTime / MOV", duration: 18.542, totalBitrate: 84200000,
+      format: "MOV", formatShort: "mov", duration: 18.542, totalBitrate: 84200000,
       videoCodec: "H.265 / HEVC", videoProfile: "Main 10", videoBitrate: 83600000,
       audioCodec: "AAC", audioProfile: "LC", audioBitrate: 320000,
       resolution: "3840 × 2160", frameRate: 25, colorSpace: "bt2020 / smpte2084 / bt2020nc",
@@ -878,6 +971,9 @@
       }, { root: elements.assetGrid, rootMargin: "220px" });
     }
     elements.assetGrid.innerHTML = "";
+    elements.assetGrid.setAttribute("data-card-style", state.preferences.cardStyle === "clean" ? "clean" : "info");
+    elements.assetGrid.classList.toggle("is-clean-card", state.preferences.cardStyle === "clean");
+    if (renderList.length) { elements.assetGrid.hidden = false; }
     elements.resultCount.textContent = state.visibleAssets.length + " 项";
     renderList.forEach(function (asset) {
       var local = localMetaFor(asset);
@@ -911,7 +1007,7 @@
       type.hidden = asset.type === "folder";
       thumb.appendChild(createPlaceholder(asset)); thumb.appendChild(sprite); thumb.appendChild(progress); thumb.appendChild(type);
       favorite.type = "button"; favorite.className = "favorite-toggle" + (local.favorite ? " is-favorite" : "");
-      favorite.textContent = local.favorite ? "★" : "☆"; favorite.title = local.favorite ? "取消本机收藏" : "添加到本机收藏";
+      favorite.textContent = local.favorite ? "★" : "☆"; favorite.title = local.favorite ? "取消收藏" : "收藏";
       favorite.setAttribute("aria-label", favorite.title); favorite.draggable = false; favorite.hidden = asset.type === "folder"; thumb.appendChild(favorite);
       if (local.label && local.label !== "none") { var label = document.createElement("span"); label.className = "color-label"; label.setAttribute("data-label", local.label); thumb.appendChild(label); }
       if (local.pinned) { pinned.className = "pin-badge"; pinned.title = "已置顶"; thumb.appendChild(pinned); }
@@ -927,7 +1023,7 @@
     elements.assetGrid.appendChild(fragment);
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
     if (!selectedVisible && state.selectedId && !state.selectedIds[state.selectedId]) { state.selectedId = null; }
-    renderSelectionDock();
+    syncSelectAllButton();
     if (!state.visibleAssets.length) {
       elements.assetGrid.hidden = true;
       showEmpty(state.assets.length ? "没有匹配的素材" : "没有可用素材", state.assets.length ? "调整搜索、收藏或筛选条件。" : "添加一个包含视频、图片、音频或 LUT 的素材位置。");
@@ -948,7 +1044,7 @@
     if (visualObserver) {
       thumb.__fnosVisualTask = { asset: asset, generation: generation };
       visualObserver.observe(thumb);
-    } else if (index < 80) {
+    } else if (index < 120) {
       enqueuePreview(function () { return generateVisual(asset, thumb, generation); });
     }
   }
@@ -1027,15 +1123,11 @@
     var badge = thumb && thumb.querySelector(".duration-badge");
     var metadata = asset.mediaMetadata;
     var card = thumb && thumb.closest(".asset-card");
-    var details = card && card.querySelector(".asset-details");
     if (!badge) { return; }
     if ((asset.type === "video" || asset.type === "audio") && metadata && metadata.duration !== null) {
       badge.textContent = formatShortDuration(metadata.duration); badge.hidden = false;
     } else if (asset.type === "image" && (metadata && metadata.resolution || asset.displayDimensions)) {
       badge.textContent = metadata && metadata.resolution || asset.displayDimensions; badge.hidden = false;
-    }
-    if (details && metadata) {
-      details.textContent = [typeLabel(asset.type), SeekLibrary.formatBytes(asset.size), metadata.duration !== null ? formatShortDuration(metadata.duration) : "", metadata.resolution && metadata.resolution !== "无视频画面" ? metadata.resolution : ""].filter(Boolean).join(" · ");
     }
   }
 
@@ -1103,6 +1195,21 @@
     }, 180);
   }
 
+  function playSelectionAudio(asset) {
+    var media;
+    if (!asset || asset.offline || !asset.path || typeof Audio !== "function") { return; }
+    stopAudioHover();
+    media = new Audio(SeekLibrary.fileUrl(asset.path));
+    media.preload = "auto";
+    media.volume = .72;
+    audioHover.assetId = asset.domId;
+    audioHover.media = media;
+    media.addEventListener("ended", function () {
+      if (audioHover.media === media) { audioHover.media = null; audioHover.assetId = null; }
+    });
+    safePlay(media);
+  }
+
   function stopAudioHover() {
     clearTimeout(audioHover.timer); audioHover.timer = null; audioHover.assetId = null;
     if (audioHover.media) { try { audioHover.media.pause(); audioHover.media.removeAttribute("src"); audioHover.media.load(); } catch (error) {} audioHover.media = null; }
@@ -1145,29 +1252,17 @@
       var selected = !!state.selectedIds[card.getAttribute("data-asset-id")];
       card.classList.toggle("is-selected", selected); card.setAttribute("aria-selected", selected ? "true" : "false");
     });
-    renderSelectionDock();
+    syncSelectAllButton();
   }
 
-  function renderSelectionDock() {
-    var assets = selectedAssets();
-    var asset = selectedAsset();
-    var local;
-    var totalSize;
-    if (!asset || !assets.length) {
-      elements.selectionDock.hidden = true;
-      return;
-    }
-    local = localMetaFor(asset);
-    elements.selectionDock.hidden = false;
-    totalSize = assets.reduce(function (sum, item) { return sum + (Number(item.size) || 0); }, 0);
-    elements.selectionTitle.textContent = assets.length > 1 ? "已选择 " + assets.length + " 项" : asset.name;
-    elements.selectionTitle.title = asset.name;
-    elements.selectionMeta.textContent = assets.length > 1 ? SeekLibrary.formatBytes(totalSize) + " · 可批量操作" : typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size) + (local.label && local.label !== "none" ? " · " + local.label : "");
-    elements.selectionPreviewButton.textContent = asset.type === "lut" ? "预览 LUT" : "预览";
-    elements.selectionPreviewButton.hidden = assets.length !== 1 || asset.type === "folder";
-    elements.selectionImportButton.hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
-    elements.selectionPlaceButton.hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
-    elements.selectionPlaceButton.textContent = state.hostId === "AEFT" ? "加入合成" : "放到播放头";
+  function syncSelectAllButton() {
+    var allSelected = !!state.visibleAssets.length && state.visibleAssets.every(function (asset) { return !!state.selectedIds[asset.domId]; });
+    if (!elements.selectAllButton) { return; }
+    elements.selectAllButton.setAttribute("aria-pressed", allSelected ? "true" : "false");
+    elements.selectAllButton.setAttribute("aria-checked", allSelected ? "true" : "false");
+    elements.selectAllButton.setAttribute("data-hint", allSelected ? "取消勾选当前素材" : "勾选当前素材");
+    elements.selectAllButton.classList.toggle("is-active", allSelected);
+    elements.selectAllButton.title = allSelected ? "取消全选" : "全选当前素材";
   }
 
   function toggleSelectAllAssets() {
@@ -1176,6 +1271,7 @@
     if (!allSelected) { state.visibleAssets.forEach(function (asset) { state.selectedIds[asset.domId] = true; }); }
     state.selectedId = !allSelected && state.visibleAssets.length ? state.visibleAssets[state.visibleAssets.length - 1].domId : null;
     state.selectionAnchorId = state.selectedId;
+    syncSelectAllButton();
     renderAssets();
   }
 
@@ -1276,14 +1372,16 @@
     var assets;
     var single;
     if (!card) { return; }
+    stopAudioHover();
     event.preventDefault(); event.stopPropagation();
     state.contextId = card.getAttribute("data-asset-id");
     if (!state.selectedIds[state.contextId]) { selectAsset(state.contextId, { only: true }); }
     asset = assetForId(state.contextId); assets = selectedAssets(); single = assets.length === 1;
     favoriteButton = elements.contextMenu.querySelector('[data-command="favorite"]');
-    favoriteButton.textContent = assets.every(function (item) { return localMetaFor(item).favorite; }) ? "取消本机收藏" : "添加到本机收藏";
+    favoriteButton.textContent = assets.every(function (item) { return localMetaFor(item).favorite; }) ? "取消收藏" : "收藏";
     elements.contextMenu.querySelector('[data-command="pin"]').textContent = assets.every(function (item) { return localMetaFor(item).pinned; }) ? "取消置顶" : "置顶";
-    elements.contextMenu.querySelector(".transcode-menu").hidden = !assets.length || assets.some(function (item) { return item.type !== "video"; });
+    var transcodeMenu = elements.contextMenu.querySelector(".transcode-menu");
+    if (transcodeMenu) { transcodeMenu.hidden = !assets.length || assets.some(function (item) { return item.type !== "video"; }); }
     elements.contextMenu.querySelector('[data-command="play"]').disabled = !single;
     elements.contextMenu.querySelector('[data-command="info"]').disabled = !single || asset.type === "folder";
     elements.contextMenu.querySelector('[data-command="import"]').hidden = state.hostId === "BROWSER" || assets.some(function (item) { return item.type === "lut" || item.type === "folder"; });
@@ -1292,18 +1390,20 @@
     elements.contextMenu.querySelector('[data-command="reveal"]').disabled = !single;
     elements.contextMenu.querySelector('[data-command="rename"]').disabled = !single;
     elements.contextMenu.querySelector('[data-command="duplicate"]').disabled = assets.some(function (item) { return item.type === "folder"; });
-    elements.copyLabelButton.disabled = !single || !localMetaFor(asset).label || localMetaFor(asset).label === "none";
+    elements.copyLabelButton.disabled = !asset || !localMetaFor(asset).label || localMetaFor(asset).label === "none";
     elements.pasteLabelButton.disabled = !state.copiedLabel;
+    if (elements.clearLabelButton) { elements.clearLabelButton.disabled = !assets.length || assets.every(function (item) { return !localMetaFor(item).label || localMetaFor(item).label === "none"; }); }
     renderLabelChoices(assets);
     renderFolderSubmenu(assets);
     elements.contextMenu.hidden = false;
+    elements.contextMenu.style.maxHeight = Math.max(120, window.innerHeight - 8) + "px";
+    elements.contextMenu.style.overflowY = "auto";
     left = Math.min(event.clientX, window.innerWidth - elements.contextMenu.offsetWidth - 6);
     top = Math.min(event.clientY, window.innerHeight - elements.contextMenu.offsetHeight - 6);
     left = Math.max(4, left);
     top = Math.max(4, top);
     elements.contextMenu.style.left = left + "px";
     elements.contextMenu.style.top = top + "px";
-    elements.contextMenu.style.maxHeight = Math.max(120, window.innerHeight - top - 6) + "px";
   }
 
   function renderLabelChoices(assets) {
@@ -1337,6 +1437,8 @@
     else if (command === "move-folder") { moveAssetsToFolder(assets, button); }
     else if (command === "copy-label") { state.copiedLabel = localMetaFor(asset).label; showNotice("标签已复制。", false, 2200); }
     else if (command === "paste-label") { assets.forEach(function (item) { setColorLabel(item, state.copiedLabel, true); }); renderAssets(); }
+    else if (command === "clear-label") { assets.forEach(function (item) { setColorLabel(item, "none", true); }); if (state.filters.label !== "all") { applyFilters(); } else { renderAssets(); } }
+    else if (command === "new-folder") { closeContextMenu(); openCreateFolderDialog(); return; }
     else if (command === "reveal") { revealAsset(asset); }
     else if (command === "rename") { openRenameDialog(asset); }
     else if (command === "trash") { openTrashDialog(assets); }
@@ -1354,7 +1456,7 @@
     updateLocalMeta(asset, { label: LABELS.indexOf(label) !== -1 ? label : "none" });
     if (!silent) {
       if (state.filters.label !== "all") { applyFilters(); }
-      else { updateCardLocalMeta(asset); renderSelectionDock(); }
+      else { updateCardLocalMeta(asset); }
     }
   }
 
@@ -1376,7 +1478,9 @@
     });
     var trigger = elements.folderSubmenuRow.children[0];
     elements.folderSubmenu.innerHTML = "";
-    trigger.disabled = !folders.length || assets.some(function (asset) { return asset.type === "folder"; });
+    trigger.disabled = false;
+    trigger.setAttribute("aria-disabled", (!folders.length || assets.some(function (asset) { return asset.type === "folder"; })) ? "true" : "false");
+    trigger.classList.toggle("is-disabled", !folders.length || assets.some(function (asset) { return asset.type === "folder"; }));
     folders.forEach(function (folder) {
       var button = document.createElement("button");
       button.type = "button"; button.setAttribute("data-command", "move-folder"); button.setAttribute("data-root-id", folder.rootId); button.setAttribute("data-folder-path", folder.path);
@@ -1386,6 +1490,9 @@
     if (!folders.length) {
       var empty = document.createElement("span"); empty.className = "submenu-empty"; empty.textContent = "没有可用文件夹"; elements.folderSubmenu.appendChild(empty);
     }
+    var create = document.createElement("button");
+    create.type = "button"; create.setAttribute("data-command", "new-folder"); create.textContent = "新建文件夹";
+    elements.folderSubmenu.appendChild(create);
   }
 
   function duplicateAssets(assets) {
@@ -1422,7 +1529,7 @@
     if (!card) { return; }
     favorite = card.querySelector(".favorite-toggle");
     favorite.classList.toggle("is-favorite", !!local.favorite); favorite.textContent = local.favorite ? "★" : "☆";
-    favorite.title = local.favorite ? "取消本机收藏" : "添加到本机收藏"; favorite.setAttribute("aria-label", favorite.title);
+    favorite.title = local.favorite ? "取消收藏" : "收藏"; favorite.setAttribute("aria-label", favorite.title);
     color = card.querySelector(".color-label");
     if (!local.label || local.label === "none") { if (color) { color.remove(); } return; }
     if (!color) { color = document.createElement("span"); color.className = "color-label"; card.querySelector(".asset-thumb").appendChild(color); }
@@ -1434,8 +1541,7 @@
     var token = asset.domId;
     var requestToken = ++metadataHoverToken;
     elements.metadataHover.setAttribute("data-asset-id", token);
-    elements.metadataHover.innerHTML = '<strong class="metadata-hover-title"></strong><div class="metadata-hover-loading">正在读取媒体信息…</div>';
-    elements.metadataHover.querySelector("strong").textContent = asset.name;
+    elements.metadataHover.innerHTML = '<div class="metadata-hover-loading">正在读取媒体信息…</div>';
     elements.metadataHover.hidden = false;
     if (window.innerWidth < 520) {
       elements.metadataHover.style.top = Math.max(8, Math.min(window.innerHeight - 260, rect.bottom + 5)) + "px";
@@ -1729,7 +1835,7 @@
     var pieces;
     if (!asset) { return; }
     if (!metadata) { elements.viewerSubtitle.textContent = typeLabel(asset.type) + " · " + SeekLibrary.formatBytes(asset.size); return; }
-    pieces = [FnOSMediaTools.formatDuration(metadata.duration), metadata.resolution, metadata.videoCodecShort && metadata.videoCodecShort !== "无" ? String(metadata.videoCodecShort).toUpperCase() : metadata.audioCodecShort && metadata.audioCodecShort !== "无" ? String(metadata.audioCodecShort).toUpperCase() : "", metadata.frameRate ? metadata.frameRate.toFixed(3).replace(/\.000$/, "") + " fps" : ""];
+    pieces = [metadata.resolution, metadata.videoCodecShort && metadata.videoCodecShort !== "无" ? String(metadata.videoCodecShort).toUpperCase() : metadata.audioCodecShort && metadata.audioCodecShort !== "无" ? String(metadata.audioCodecShort).toUpperCase() : "", metadata.frameRate ? metadata.frameRate.toFixed(3).replace(/\.000$/, "") + " fps" : ""];
     elements.viewerSubtitle.textContent = pieces.filter(Boolean).join(" · ");
   }
 
@@ -1782,6 +1888,21 @@
     media.currentTime = Math.max(min, Math.min(max, media.currentTime + direction / viewerFrameRate())); updateViewerTimeline();
   }
 
+  function navigateViewerAsset(direction) {
+    var current = viewerState.asset;
+    var mediaAssets;
+    var index;
+    var next;
+    if (!current) { return; }
+    mediaAssets = state.visibleAssets.filter(function (asset) { return asset.type === "video" || asset.type === "audio" || asset.type === "image"; });
+    index = mediaAssets.map(function (asset) { return asset.domId; }).indexOf(current.domId);
+    if (index === -1) { return; }
+    next = mediaAssets[index + direction];
+    if (!next) { return; }
+    selectAsset(next.domId, { only: true });
+    openViewer(next);
+  }
+
   function markViewerIn() {
     var media = viewerState.media;
     var frame;
@@ -1814,6 +1935,49 @@
     if (duration) {
       elements.viewerInMark.style.left = Math.max(0, Math.min(100, viewerState.inPoint / duration * 100)) + "%";
       elements.viewerOutMark.style.left = Math.max(0, Math.min(100, viewerState.outPoint / duration * 100)) + "%";
+      if (elements.timelineTrackWrap) {
+        elements.timelineTrackWrap.style.setProperty("--timeline-in", Math.max(0, Math.min(100, viewerState.inPoint / duration * 100)) + "%");
+        elements.timelineTrackWrap.style.setProperty("--timeline-out", Math.max(0, Math.min(100, (viewerState.outPoint === null ? duration : viewerState.outPoint) / duration * 100)) + "%");
+        elements.timelineTrackWrap.classList.toggle("has-range", viewerState.hasIn && viewerState.hasOut && viewerState.outPoint > viewerState.inPoint);
+        elements.timelineTrackWrap.setAttribute("data-has-range", viewerState.hasIn && viewerState.hasOut && viewerState.outPoint > viewerState.inPoint ? "true" : "false");
+      }
+    } else if (elements.timelineTrackWrap) {
+      elements.timelineTrackWrap.classList.remove("has-range");
+      elements.timelineTrackWrap.setAttribute("data-has-range", "false");
+    }
+  }
+
+  function timelineTimeFromPointer(event) {
+    var media = viewerState.media;
+    var rect;
+    var ratio;
+    if (!media || !elements.timelineTrackWrap || !isFinite(media.duration) || media.duration <= 0) { return null; }
+    rect = elements.timelineTrackWrap.getBoundingClientRect();
+    ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+    return ratio * media.duration;
+  }
+
+  function handleTimelineMouse(event) {
+    var seconds;
+    if (!viewerState.media || event.target === elements.viewerScrubber && !event.shiftKey && !event.altKey && event.type !== "contextmenu") { return; }
+    seconds = timelineTimeFromPointer(event);
+    if (seconds === null) { return; }
+    if (event.type === "contextmenu" || event.altKey || event.button === 2) {
+      event.preventDefault();
+      viewerState.media.currentTime = seconds;
+      markViewerOut();
+      return;
+    }
+    if (event.shiftKey) {
+      event.preventDefault();
+      viewerState.media.currentTime = seconds;
+      markViewerIn();
+      return;
+    }
+    if (event.target !== elements.viewerScrubber) {
+      event.preventDefault();
+      viewerState.media.currentTime = seconds;
+      updateViewerTimeline();
     }
   }
 
@@ -1847,7 +2011,7 @@
     elements.screenshotButton.disabled = true;
     showNotice("正在从原始视频生成当前帧…", false, 0);
     mediaTools.captureFrameForProject(asset.path, media.currentTime).then(function (filePath) {
-      return runHostActionForPath(filePath, false, "截图");
+      return runHostActionForPath(filePath, false, "截图", "current", { directImport: true });
     }).then(function () { showNotice("截图已生成并导入 Premiere 项目。", false, 4500); })
       .catch(function (error) { showNotice("截图失败：" + friendlyError(error), true, 6500); })
       .then(function () { elements.screenshotButton.disabled = false; });
@@ -1959,17 +2123,29 @@
     }(1));
   }
 
+  function displayMediaFormat(asset, metadata) {
+    var extension = String(asset && asset.extension || path && path.extname(asset && asset.name || "").replace(/^\./, "") || "").toLowerCase();
+    var known = {
+      mp4: "MP4", m4v: "M4V", mov: "MOV", mxf: "MXF", avi: "AVI", mkv: "MKV", webm: "WebM",
+      wav: "WAV", mp3: "MP3", aac: "AAC", m4a: "M4A", flac: "FLAC", aiff: "AIFF", aif: "AIFF",
+      jpg: "JPEG", jpeg: "JPEG", png: "PNG", webp: "WebP", gif: "GIF", bmp: "BMP", psd: "PSD", psb: "PSB", ai: "AI", eps: "EPS", cube: "CUBE"
+    };
+    if (known[extension]) { return known[extension]; }
+    if (metadata && metadata.formatShort) { return String(metadata.formatShort).split(",")[0].toUpperCase(); }
+    return metadata && metadata.format || "未知";
+  }
+
   function metadataRows(asset, metadata) {
     return [
-      ["文件名", asset.name], ["文件格式", metadata.format], ["时长", FnOSMediaTools.formatDuration(metadata.duration)],
+      ["文件格式", displayMediaFormat(asset, metadata)], ["时长", FnOSMediaTools.formatDuration(metadata.duration)],
       ["文件大小", SeekLibrary.formatBytes(asset.size)], ["总码率", FnOSMediaTools.formatBitrate(metadata.totalBitrate)],
       ["视频编码", metadata.videoCodec], ["视频 Profile", metadata.videoProfile], ["视频码率", FnOSMediaTools.formatBitrate(metadata.videoBitrate)],
       ["音频编码", metadata.audioCodec], ["音频 Profile", metadata.audioProfile], ["音频码率", FnOSMediaTools.formatBitrate(metadata.audioBitrate)], ["分辨率", metadata.resolution],
       ["帧率", metadata.frameRate ? metadata.frameRate.toFixed(3).replace(/\.000$/, "") + " fps" : "不适用"],
       ["色彩空间", metadata.colorSpace], ["色域 / Primaries", metadata.colorPrimaries], ["传递函数", metadata.colorTransfer],
       ["矩阵系数", metadata.colorMatrix], ["色彩范围", metadata.colorRange],
-      ["动态范围", metadata.dynamicRange + "（推断置信度：" + metadata.dynamicRangeConfidence + "）"],
-      ["Alpha 通道", metadata.alpha + "（推断置信度：" + metadata.alphaConfidence + "）"],
+      ["动态范围", metadata.dynamicRange],
+      ["Alpha 通道", metadata.alpha],
       ["像素格式", metadata.pixelFormat], ["位深", metadata.bitDepth], ["扫描方式", metadata.fieldOrder],
       ["像素宽高比", metadata.sampleAspectRatio], ["显示宽高比", metadata.displayAspectRatio],
       ["音频采样率", metadata.audioSampleRate ? metadata.audioSampleRate + " Hz" : "不适用"], ["音频声道", metadata.audioChannels],
@@ -1980,7 +2156,7 @@
 
   function openMetadata(asset) {
     state.selectedId = asset.domId;
-    elements.metadataTitle.textContent = asset.name; elements.metadataPreview.innerHTML = ""; elements.metadataList.innerHTML = ""; elements.metadataLoading.hidden = false; elements.metadataPanel.hidden = false;
+    elements.metadataTitle.textContent = ""; elements.metadataPreview.innerHTML = ""; elements.metadataList.innerHTML = ""; elements.metadataLoading.hidden = false; elements.metadataPanel.hidden = false;
     var card = findCard(asset.domId); var previewImage = card && card.querySelector(".asset-thumb img");
     if (previewImage) { var image = document.createElement("img"); image.src = previewImage.src; image.alt = ""; elements.metadataPreview.appendChild(image); }
     else { elements.metadataPreview.appendChild(createPlaceholder(asset)); }
@@ -2004,7 +2180,7 @@
     var extensionLength = asset.extension ? asset.extension.length + 1 : 0;
     state.dialogAction = { type: asset.type === "folder" ? "rename-folder" : "rename", assetId: asset.domId };
     elements.dialogTitle.textContent = asset.type === "folder" ? "重命名文件夹" : "重命名源文件";
-    elements.dialogMessage.textContent = asset.type === "folder" ? "这会修改当前素材位置中的真实文件夹名称。" : "这会修改 NAS 上的真实文件名；若素材已导入 Adobe 工程，工程可能显示离线。不可在这里更改扩展名。";
+    elements.dialogMessage.textContent = asset.type === "folder" ? "这会修改当前素材位置中的真实文件夹名称。" : "这会修改当前素材位置上的真实文件名；若素材已导入 Adobe 工程，工程可能显示离线。不可在这里更改扩展名。";
     elements.renameField.hidden = false; elements.renameInput.value = asset.name;
     elements.dialogConfirmButton.textContent = "重命名"; elements.dialogConfirmButton.className = "button button-primary";
     elements.fileActionDialog.hidden = false; elements.renameInput.focus(); elements.renameInput.setSelectionRange(0, asset.name.length - extensionLength);
@@ -2074,6 +2250,8 @@
   }
 
   function performTrash(assets) {
+    assets = Array.isArray(assets) ? assets.filter(Boolean) : [assets].filter(Boolean);
+    if (!assets.length || !assetOps) { elements.dialogConfirmButton.disabled = false; closeDialog(); return; }
     assetOps.moveToTrash({ roots: state.roots, targets: assets, onProgress: showOperationProgress }).then(function () {
       elements.dialogConfirmButton.disabled = false;
       closeDialog(); state.selectedIds = {}; state.selectedId = null; showNotice("已移到 macOS 废纸篓，可从废纸篓恢复。", false, 4500); scanAssets();
@@ -2091,7 +2269,10 @@
     if (!window.cep || !window.cep.fs || !window.cep.fs.showOpenDialogEx) { showNotice("无法打开目标文件夹选择器。", true, 4500); return; }
     destinationResult = window.cep.fs.showOpenDialogEx(false, true, "选择项目素材打包位置", currentDestination() ? currentDestination().path : "", []);
     if (!destinationResult || destinationResult.err !== 0 || !destinationResult.data || !destinationResult.data.length) { return; }
-    payload = JSON.stringify({ roots: state.roots.map(function (root) { return { id: root.id, path: root.path, label: root.label || displayNameForPath(root.path) }; }) });
+    payload = JSON.stringify({
+      roots: state.roots.map(function (root) { return { id: root.id, path: root.path, label: root.label || displayNameForPath(root.path) }; }),
+      captureRoots: mediaTools && mediaTools.captureDirectory ? [{ id: "plugin-capture", path: mediaTools.captureDirectory, label: "Plugin screenshots" }] : []
+    });
     script = "SeekBridge.listUsedPremiereMedia(" + JSON.stringify(payload) + ")";
     elements.operationProgress.hidden = false; elements.operationProgressLabel.textContent = "正在读取 Premiere 时间线素材…"; elements.operationProgressBar.style.transform = "scaleX(0)";
     elements.packageProjectButton.disabled = true;
@@ -2101,7 +2282,7 @@
       catch (error) { hostResult = { ok: false, message: rawResult || "Premiere 没有返回素材清单。" }; }
       if (!hostResult.ok) { finishProjectPackageError(new Error(hostResult.message || "无法读取 Premiere 时间线素材。")); return; }
       if (!hostResult.media || !hostResult.media.length) { finishProjectPackageError(new Error("当前 Premiere 项目的时间线没有使用已配置路径中的素材。")); return; }
-      projectPackager.packageProject({ destination: destinationResult.data[0], roots: state.roots, media: hostResult.media, project: hostResult, onProgress: renderPackageProgress }).then(function (result) {
+      projectPackager.packageProject({ destination: destinationResult.data[0], roots: state.roots, media: hostResult.media, project: hostResult, flatten: true, onProgress: renderPackageProgress }).then(function (result) {
         elements.packageProjectButton.disabled = false; elements.operationProgress.hidden = true;
         if (result.complete) { showNotice("项目素材打包完成，共复制 " + result.copied.length + " 个实际使用文件。", false, 7000); }
         else { showNotice("打包完成，但有 " + (result.offline.length + result.failed.length + result.skipped.length) + " 项离线或未复制；详情见打包清单。", true, 9000); }
@@ -2143,13 +2324,13 @@
     });
   }
 
-  function runHostActionForPath(filePath, placeAtCurrentTime, label, position) {
+  function runHostActionForPath(filePath, placeAtCurrentTime, label, position, options) {
     var method;
     var payload;
     var script;
     if (!csInterface || state.hostId === "BROWSER") { return Promise.reject(new Error("请在 Premiere Pro 或 After Effects 中执行此操作。")); }
     method = placeAtCurrentTime ? (state.hostId === "AEFT" ? "importMediaToComp" : "importMediaToSequence") : "importMedia";
-    payload = JSON.stringify({ path: filePath, position: position || "current" }); script = "SeekBridge." + method + "(" + JSON.stringify(payload) + ")";
+    payload = JSON.stringify({ path: filePath, position: position || "current", directImport: !!(options && options.directImport) }); script = "SeekBridge." + method + "(" + JSON.stringify(payload) + ")";
     return new Promise(function (resolve, reject) {
       csInterface.evalScript(script, function (rawResult) {
         var result;
@@ -2187,25 +2368,54 @@
     elements.assetGrid.style.setProperty("--favorite-size", (19 + ratio * 7).toFixed(2) + "px");
     elements.assetGrid.style.setProperty("--favorite-font", (12 + ratio * 5).toFixed(2) + "px");
     elements.assetGrid.style.setProperty("--label-size", (6 + ratio * 2).toFixed(2) + "px");
+    elements.assetGrid.style.setProperty("--zoom-thumb-size", (8 + ratio * 7).toFixed(2) + "px");
+    if (elements.zoomRange) {
+      elements.zoomRange.style.setProperty("--zoom-thumb-size", (8 + ratio * 7).toFixed(2) + "px");
+      elements.zoomRange.style.setProperty("--zoom-min-dot", (4 + ratio * 2).toFixed(2) + "px");
+      elements.zoomRange.style.setProperty("--zoom-max-dot", (8 + ratio * 4).toFixed(2) + "px");
+    }
   }
   function toggleViewMode() {
     state.preferences.viewMode = state.preferences.viewMode === "list" ? "card" : "list";
-    persistPreferences(); syncViewMode(); renderAssets();
+    persistPreferences(); syncViewMode(); syncGridZoom(); renderAssets();
   }
   function syncViewMode() {
     var list = state.preferences.viewMode === "list";
     elements.assetGrid.classList.toggle("is-list-view", list);
+    elements.zoomRange.disabled = list;
+    elements.zoomRange.closest(".zoom-control").classList.toggle("is-disabled", list);
+    elements.zoomRange.setAttribute("aria-disabled", list ? "true" : "false");
     elements.viewModeButton.classList.toggle("is-active", list);
     elements.viewModeButton.querySelector("span").className = list ? "icon-view-list" : "icon-view-grid";
     elements.viewModeButton.setAttribute("aria-label", list ? "切换到卡片模式" : "切换到列表模式");
+    syncCardStyle();
+  }
+  function toggleCardStyle() {
+    state.preferences.cardStyle = state.preferences.cardStyle === "clean" ? "info" : "clean";
+    persistPreferences();
+    syncCardStyle();
+    renderAssets();
+  }
+  function syncCardStyle() {
+    var clean = state.preferences.cardStyle === "clean";
+    elements.assetGrid.classList.toggle("is-clean-card", clean);
+    elements.assetGrid.setAttribute("data-card-style", clean ? "clean" : "info");
+    if (elements.cardStyleButton) {
+      elements.cardStyleButton.hidden = state.preferences.viewMode === "list";
+      elements.cardStyleButton.classList.toggle("is-active", clean);
+      elements.cardStyleButton.setAttribute("aria-pressed", clean ? "true" : "false");
+      elements.cardStyleButton.setAttribute("aria-label", clean ? "切换到信息卡模式" : "切换到纯净卡模式");
+    }
   }
   function showEmpty(title, message) { elements.emptyTitle.textContent = title; elements.emptyMessage.textContent = message; elements.emptyState.hidden = false; }
   function showNotice(message, isError, duration) { clearTimeout(noticeTimer); elements.notice.hidden = false; elements.notice.textContent = message; elements.notice.classList.toggle("is-error", !!isError); if (duration !== 0) { noticeTimer = setTimeout(function () { elements.notice.hidden = true; }, duration || 4000); } }
-  function friendlyError(error) { if (!error) { return "未知错误"; } if (error.code === "EACCES" || error.code === "EPERM") { return "没有操作权限"; } if (error.code === "ENOENT" || error.message === "FILE_NOT_FOUND") { return "路径不存在或共享盘已离线"; } if (error.message === "SOURCE_TIMEOUT") { return "NAS 响应超时"; } if (error.code === "JOB_CANCELLED") { return "任务已取消"; } return error.message || String(error); }
+  function friendlyError(error) { if (!error) { return "未知错误"; } if (error.code === "EACCES" || error.code === "EPERM") { return "没有操作权限"; } if (error.code === "ENOENT" || error.message === "FILE_NOT_FOUND") { return "路径不存在或共享位置已离线"; } if (error.message === "SOURCE_TIMEOUT") { return "共享位置响应超时"; } if (error.code === "JOB_CANCELLED") { return "任务已取消"; } return error.message || String(error); }
 
   function init() {
-    cacheElements(); initializeRoots(); detectHost(); bindEvents();
-    renderLocations(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncFilterBadge(); scanAssets();
+    cacheElements(); ensureContextMenuExtensions(); initializeRoots(); detectHost(); bindEvents();
+    renderLocations(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncCardStyle(); syncSelectAllButton(); syncFilterBadge();
+    if (state.preferences.searchOpen) { toggleSearchPopover(); }
+    scanAssets();
   }
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }
 }());

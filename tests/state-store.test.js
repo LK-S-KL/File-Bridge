@@ -25,7 +25,8 @@ test("persists multiple roots and local asset metadata atomically", () => {
         zoom: 176,
         scanMode: "selected",
         activeRootId: "two",
-        viewMode: "list"
+        viewMode: "list",
+        cardStyle: "clean"
       }
     });
     const loaded = store.load();
@@ -36,6 +37,7 @@ test("persists multiple roots and local asset metadata atomically", () => {
     assert.equal(loaded.preferences.scanMode, "selected");
     assert.equal(loaded.preferences.activeRootId, "two");
     assert.equal(loaded.preferences.viewMode, "list");
+    assert.equal(loaded.preferences.cardStyle, "clean");
     assert.equal(loaded.libraryCache.one[0].name, "a.mp4");
     assert.equal(fs.statSync(store.path).mode & 0o777, 0o600);
     const leftovers = fs.readdirSync(path.dirname(store.path)).filter((name) => name.endsWith(".tmp"));

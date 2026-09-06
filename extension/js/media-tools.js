@@ -189,7 +189,95 @@
     return duration;
   }
 
-  function normalizeProbe(raw, sourceStat) {
+  function extensionForPath(sourcePath) {
+    var value = String(sourcePath || "").toLowerCase();
+    var slash = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\"));
+    var dot = value.lastIndexOf(".");
+    return dot <= slash || dot === -1 ? "" : value.slice(dot + 1);
+  }
+
+  function containerToken(formatName, sourcePath) {
+    var extension = extensionForPath(sourcePath);
+    var tokens = String(formatName || "").toLowerCase().split(",").map(function (value) {
+      return value.trim();
+    }).filter(Boolean);
+    var aliases = {
+      m4v: ["m4v", "mp4"],
+      m4a: ["m4a", "mp4"],
+      jpg: ["mjpeg", "image2"],
+      jpeg: ["mjpeg", "image2"],
+      tif: ["tiff", "image2"],
+      tiff: ["tiff", "image2"]
+    };
+    var candidates = aliases[extension] || (extension ? [extension] : []);
+    var authoritativeExtensions = {
+      mp4: true, m4v: true, m4a: true, mov: true, webm: true, mkv: true,
+      avi: true, mxf: true, wav: true, mp3: true, aac: true, flac: true,
+      ogg: true, "3gp": true, png: true, jpg: true, jpeg: true, gif: true,
+      bmp: true, tif: true, tiff: true, svg: true, pdf: true
+    };
+    var i;
+    var j;
+    /* The extension is the most useful container label for users and avoids
+       ffprobe's combined `mov,mp4,...` family name being shown as MOV for an
+       actual .mp4 file. */
+    if (extension && authoritativeExtensions[extension]) {
+      return extension;
+    }
+    for (i = 0; i < candidates.length; i += 1) {
+      for (j = 0; j < tokens.length; j += 1) {
+        if (tokens[j] === candidates[i]) {
+          return tokens[j];
+        }
+      }
+    }
+    return tokens[0] || "";
+  }
+
+  function displayFormat(format, sourcePath) {
+    var extension = extensionForPath(sourcePath);
+    var token = containerToken(format && format.format_name, sourcePath);
+    var known = {
+      mp4: "MPEG-4 / MP4",
+      m4v: "MPEG-4 Video / M4V",
+      m4a: "MPEG-4 Audio / M4A",
+      mov: "QuickTime / MOV",
+      webm: "WebM",
+      mkv: "Matroska / MKV",
+      avi: "AVI",
+      mxf: "MXF",
+      wav: "WAV",
+      mp3: "MP3",
+      aac: "AAC",
+      flac: "FLAC",
+      ogg: "Ogg",
+      "3gp": "3GPP",
+      png: "PNG",
+      jpeg: "JPEG",
+      jpg: "JPEG",
+      tiff: "TIFF",
+      gif: "GIF",
+      bmp: "BMP",
+      webp: "WebP",
+      svg: "SVG",
+      aiff: "AIFF",
+      aif: "AIFF",
+      pdf: "PDF"
+    };
+    /* ffprobe reports the shared QuickTime/ISO BMFF family as
+       "mov,mp4,...". The file extension is the authoritative container
+       hint for the human-facing label in that case. */
+    if (extension && known[extension]) {
+      return known[extension];
+    }
+    if (token && known[token]) {
+      return known[token];
+    }
+    return format && (format.format_long_name || format.format_name) || "未知";
+  }
+
+  function normalizeProbe(raw, sourceStat, sourcePath) {
+    sourcePath = sourcePath || (sourceStat && sourceStat.path) || "";
     var format = raw && raw.format ? raw.format : {};
     var streams = raw && raw.streams ? raw.streams : [];
     var video = firstStream(streams, "video");
@@ -237,8 +325,8 @@
     }
 
     return {
-      format: format.format_long_name || format.format_name || "未知",
-      formatShort: format.format_name || "",
+      format: displayFormat(format, sourcePath),
+      formatShort: sourcePath ? containerToken(format.format_name, sourcePath) : (format.format_name || ""),
       duration: duration,
       totalBitrate: totalBitrate,
       videoCodec: videoCodecs.length ? videoCodecs.join(" + ") : "无",
@@ -687,25 +775,44 @@
       });
     }
 
-    function captureFrameForProject(filePath, seconds) {
+    function captureTimestamp(now) {
+      var date = now instanceof Date ? now : new Date(now || Date.now());
+      function two(value) { return String(value).padStart(2, "0"); }
+      if (!isFinite(date.getTime())) { date = new Date(); }
+      return String(date.getFullYear()) + two(date.getMonth() + 1) + two(date.getDate()) + "-" + two(date.getHours()) + two(date.getMinutes());
+    }
+
+    function captureFrameForProject(filePath, seconds, options) {
+      var settings = options || {};
       var timestamp = Math.max(0, Number(seconds) || 0);
-      var base = path.basename(filePath, path.extname(filePath)).replace(/[<>:"/\\|?*]/g, "-").slice(0, 80) || "frame";
-      var marker = String(Math.floor(timestamp / 3600)).padStart(2, "0") + String(Math.floor(timestamp / 60) % 60).padStart(2, "0") + String(Math.floor(timestamp) % 60).padStart(2, "0") + String(Math.min(999, Math.round((timestamp % 1) * 1000))).padStart(3, "0");
+      var base = path.basename(filePath, path.extname(filePath)).replace(/[<>:"/\\|?*]/g, "-").replace(/[ .]+$/g, "").slice(0, 100) || "frame";
+      var marker = captureTimestamp(settings.now);
+      var destinationDirectory = settings.directory ? String(settings.directory) : captureDirectory;
       var destination;
       var index = 1;
-      fs.mkdirSync(captureDirectory, { recursive: true });
+      if (!path.isAbsolute(destinationDirectory) || String(destinationDirectory).indexOf("\u0000") !== -1) {
+        return Promise.reject(new Error("INVALID_CAPTURE_DIRECTORY"));
+      }
+      try { fs.mkdirSync(destinationDirectory, { recursive: true }); }
+      catch (mkdirError) { return Promise.reject(mkdirError); }
       return new Promise(function (resolve, reject) {
         function reserve() {
-          destination = path.join(captureDirectory, base + "_" + marker + (index > 1 ? "-" + index : "") + ".png");
+          destination = path.join(destinationDirectory, base + "_Screenshot_" + marker + (index > 1 ? "-" + index : "") + ".png");
           fs.open(destination, "wx", 0o600, function (openError, descriptor) {
             if (openError && openError.code === "EEXIST") { index += 1; reserve(); return; }
             if (openError) { reject(openError); return; }
-            fs.close(descriptor, function (closeError) { if (closeError) { removeFailedCacheFile(destination); reject(closeError); return; } resolve(destination); });
+            fs.close(descriptor, function (closeError) {
+              if (closeError) { removeFailedCacheFile(destination); reject(closeError); return; }
+              resolve(destination);
+            });
           });
         }
         reserve();
       }).then(function (reservedPath) {
-        return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-ss", timestamp.toFixed(3), "-map", "0:v:0", "-frames:v", "1", "-y", reservedPath], reservedPath, 90000, "capture:" + reservedPath);
+        return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-ss", timestamp.toFixed(3), "-map", "0:v:0", "-frames:v", "1", "-y", reservedPath], reservedPath, 90000, "capture:" + reservedPath).catch(function (error) {
+          try { fs.unlinkSync(reservedPath); } catch (ignoreCaptureCleanupError) {}
+          throw error;
+        });
       });
     }
 
@@ -789,7 +896,9 @@
         var ffprobe;
         if (memoryMetadata[key]) { return memoryMetadata[key]; }
         if (pendingMetadata[key]) { return pendingMetadata[key]; }
-        ensureDirectories(); cacheFile = path.join(metadataDirectory, key + "-v2.json");
+        /* v3 invalidates the old cache because container labels are now
+           extension-aware (an .mp4 must not inherit QuickTime/MOV). */
+        ensureDirectories(); cacheFile = path.join(metadataDirectory, key + "-v3.json");
         if (fs.existsSync(cacheFile)) {
           try { memoryMetadata[key] = JSON.parse(fs.readFileSync(cacheFile, "utf8")); return memoryMetadata[key]; } catch (ignoreCacheError) {}
         }
@@ -801,7 +910,7 @@
             delete pendingMetadata[key];
             if (error) { reject(error); return; }
             try {
-              normalized = normalizeProbe(JSON.parse(stdout), stat); memoryMetadata[key] = normalized;
+              normalized = normalizeProbe(JSON.parse(stdout), stat, filePath); memoryMetadata[key] = normalized;
               fs.writeFileSync(cacheFile, JSON.stringify(normalized), "utf8"); resolve(normalized);
             } catch (parseError) { reject(parseError); }
           });
@@ -821,6 +930,21 @@
         ffmpeg = findBinary("ffmpeg"); if (!ffmpeg) { throw new Error("FFMPEG_NOT_FOUND"); }
         args = kind === "waveform" ? ["-hide_banner", "-loglevel", "error", "-i", filePath, "-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=600x120:colors=0x62d684:scale=sqrt:draw=full[wave]", "-map", "[wave]", "-frames:v", "1", "-an", "-sn", "-dn", "-y", destination] : ["-hide_banner", "-loglevel", "error", "-ss", "0.5", "-i", filePath, "-frames:v", "1", "-vf", "scale=480:270:force_original_aspect_ratio=increase,crop=480:270", "-y", destination];
         return outputOnce(destination, function () { return runFfmpeg(args, destination, 45000, "derived:" + destination); });
+      });
+    }
+
+    function posterFor(filePath) {
+      /* A few camera/phone containers reject the crop filter even though a
+         single decoded frame is available. Keep card mode useful by falling
+         back to the frame renderer, which uses a simpler filter graph. */
+      return generateImage(filePath, "poster").catch(function (error) {
+        return previewProxyFor(filePath, "720").then(function (proxyPath) {
+          return generateImage(proxyPath, "poster");
+        }).catch(function () {
+          return frameFor(filePath, 0.5, 480, 270).catch(function () {
+            throw error;
+          });
+        });
       });
     }
 
@@ -922,8 +1046,9 @@
 
     return {
       cacheRoot: cacheRoot,
+      captureDirectory: captureDirectory,
       metadataFor: metadataFor,
-      posterFor: function (filePath) { return generateImage(filePath, "poster"); },
+      posterFor: posterFor,
       waveformFor: function (filePath) { return generateImage(filePath, "waveform"); },
       previewStillFor: previewStillFor,
       spriteFor: spriteFor,
@@ -944,6 +1069,8 @@
   return {
     create: create,
     normalizeProbe: normalizeProbe,
+    displayFormat: displayFormat,
+    containerToken: containerToken,
     dynamicRangeInfo: dynamicRangeInfo,
     alphaInfo: alphaInfo,
     rationalToNumber: rationalToNumber,

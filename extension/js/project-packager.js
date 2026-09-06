@@ -28,7 +28,10 @@
 
   function pathKey(path, value, platform) {
     var resolved = path.resolve(String(value || ""));
-    return platform === "win32" ? resolved.toLowerCase() : resolved;
+    /* The CEP target is commonly macOS on a case-insensitive volume. Treat
+       planned destination names case-insensitively there so two clips such
+       as A.MP4/a.mp4 never race into the same output path. */
+    return platform === "win32" || platform === "darwin" ? resolved.toLowerCase() : resolved;
   }
 
   function isInside(path, child, rootPath) {
@@ -60,6 +63,22 @@
     });
     if (!normalized.length) { throw codedError("INVALID_ROOTS", "至少需要一个有效的素材位置。"); }
     return normalized;
+  }
+
+  function flatName(path, sourcePath, seen, platform) {
+    var original = safeSegment(path.basename(sourcePath), "media");
+    var extension = path.extname(original);
+    var stem = extension ? original.slice(0, -extension.length) : original;
+    var candidate = original;
+    var index = 2;
+    var key = pathKey(path, candidate, platform);
+    while (seen[key] || candidate === MANIFEST_FILENAME) {
+      candidate = stem + "-" + index + extension;
+      key = pathKey(path, candidate, platform);
+      index += 1;
+    }
+    seen[key] = true;
+    return candidate;
   }
 
   function findRoot(path, item, roots) {
@@ -161,7 +180,7 @@
       });
     }
 
-    function classifyMedia(media, roots) {
+    function classifyMedia(media, roots, options) {
       var lexicalSeen = {};
       var candidates = [];
       var skipped = [];
@@ -201,6 +220,8 @@
           videoUses: Number(item.videoUses) || 0,
           audioUses: Number(item.audioUses) || 0,
           sequences: item.sequences instanceof Array ? item.sequences.slice() : [],
+          pluginGenerated: item.pluginGenerated === true,
+          sourceKind: String(item.sourceKind || "media"),
           sourceIndex: index
         });
       });
@@ -219,9 +240,20 @@
       var completed = 0;
 
       options = options || {};
-      roots = normalizeRoots(path, options.roots, platform);
+      var rootInputs = Array.isArray(options.roots) ? options.roots.slice() : [];
+      var extraRoots = Array.isArray(options.extraRoots) ? options.extraRoots : [];
+      extraRoots.forEach(function (root) { rootInputs.push(root); });
+      /* Plugin-generated files (for example project screenshots) are allowed
+         to contribute their explicitly reported root without scanning it. */
+      if (Array.isArray(options.media)) {
+        options.media.forEach(function (item) {
+          if (!item || item.pluginGenerated !== true || typeof item.rootPath !== "string") { return; }
+          rootInputs.push({ id: item.rootId, path: item.rootPath, label: item.rootLabel || "Plugin files" });
+        });
+      }
+      roots = normalizeRoots(path, rootInputs, platform);
       if (!(options.media instanceof Array)) { return Promise.reject(codedError("INVALID_MEDIA_LIST", "Premiere 时间线素材清单无效。")); }
-      classified = classifyMedia(options.media, roots);
+      classified = classifyMedia(options.media, roots, options);
       skipped = classified.skipped.slice();
       emit(options.onProgress, { phase: "inspect", completed: 0, total: classified.candidates.length, percent: 0 });
 
@@ -257,9 +289,9 @@
                 return null;
               }
               realSeen[pathKey(path, sourceRealPath, platform)] = true;
-              destinationRelativePath = path.join("Media", candidate.root.packageFolder, candidate.relativePath);
+              destinationRelativePath = options.flatten === false ? path.join("Media", candidate.root.packageFolder, candidate.relativePath) : flatName(path, candidate.sourcePath, destinationSeen, platform);
               destinationKey = pathKey(path, destinationRelativePath, platform);
-              if (destinationSeen[destinationKey]) {
+              if (options.flatten === false && destinationSeen[destinationKey]) {
                 throw codedError("DESTINATION_COLLISION", "两个素材会写入同一个打包位置。");
               }
               destinationSeen[destinationKey] = true;
@@ -278,7 +310,9 @@
                 clipCount: candidate.clipCount,
                 videoUses: candidate.videoUses,
                 audioUses: candidate.audioUses,
-                sequences: candidate.sequences
+                sequences: candidate.sequences,
+                pluginGenerated: candidate.pluginGenerated,
+                sourceKind: candidate.sourceKind
               });
               return null;
             }).catch(function (error) {
@@ -449,9 +483,10 @@
           sequencesScanned: Number(project.sequencesScanned) || 0,
           trackItemsScanned: Number(project.trackItemsScanned) || 0
         },
+        layout: options.flatten === false ? "preserve" : "flat",
         packageRoot: destinationState.path,
         roots: plan.roots.map(function (root) {
-          return { id: root.id, sourcePath: root.path, packageFolder: path.join("Media", root.packageFolder) };
+          return { id: root.id, sourcePath: root.path, packageFolder: options.flatten === false ? path.join("Media", root.packageFolder) : "" };
         }),
         summary: {
           listedByPremiere: options.media.length,
@@ -536,7 +571,9 @@
                 clipCount: file.clipCount,
                 videoUses: file.videoUses,
                 audioUses: file.audioUses,
-                sequences: file.sequences
+                sequences: file.sequences,
+                pluginGenerated: file.pluginGenerated,
+                sourceKind: file.sourceKind
               });
               return null;
             }).catch(function (error) {
@@ -603,6 +640,7 @@
     create: create,
     MANIFEST_FILENAME: MANIFEST_FILENAME,
     safeSegment: safeSegment,
+    flatName: flatName,
     isInside: isInside
   };
 }));

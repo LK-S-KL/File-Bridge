@@ -118,3 +118,20 @@ test("host API rejects empty roots and remains compatible with native JSON", () 
   assert.equal(result.ok, false);
   assert.equal(result.code, "INVALID_ROOTS");
 });
+
+test("host API opts in plugin-generated screenshots outside configured media roots", () => {
+  const screenshot = projectItem("/Users/editor/Pictures/LK‘s File Bridge Captures/镜头_Screenshot_20260906-1432.png", false);
+  const host = loadHost([
+    sequence("截图测试", [track([clip(screenshot)])], [])
+  ], false);
+  const result = JSON.parse(host.listUsedPremiereMedia(JSON.stringify({
+    roots: [{ id: "media", path: "/Volumes/团队素材", label: "团队素材" }],
+    captureRoots: [{ id: "capture", path: "/Users/editor/Pictures/LK‘s File Bridge Captures", label: "Plugin screenshots" }]
+  })));
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.mediaCount, 1);
+  assert.equal(result.media[0].pluginGenerated, true);
+  assert.equal(result.media[0].sourceKind, "screenshot");
+  assert.equal(result.media[0].rootId, "capture");
+});

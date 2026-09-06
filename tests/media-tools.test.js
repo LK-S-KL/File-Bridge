@@ -88,6 +88,15 @@ test("normalizes the requested technical metadata from ffprobe JSON", () => {
   assert.equal(metadata.dynamicRangeCode, "HDR10");
   assert.equal(metadata.alphaPresent, false);
   assert.equal(metadata.creationTime, "2026-08-03T04:05:06.000000Z");
+
+  const mp4Metadata = mediaTools.normalizeProbe(raw, fixtureStat(), "/素材/片段.mp4");
+  const movMetadata = mediaTools.normalizeProbe(raw, fixtureStat(), "/素材/片段.mov");
+  assert.equal(mp4Metadata.format, "MPEG-4 / MP4");
+  assert.equal(mp4Metadata.formatShort, "mp4");
+  assert.equal(movMetadata.format, "QuickTime / MOV");
+  assert.equal(movMetadata.formatShort, "mov");
+  assert.equal(mediaTools.displayFormat({ format_name: "mov", format_long_name: "QuickTime / MOV" }, "/素材/只改扩展名.mp4"), "MPEG-4 / MP4");
+  assert.equal(mediaTools.normalizeProbe(raw, Object.assign(fixtureStat(), { path: "/素材/由 stat 提供.mp4" })).format, "MPEG-4 / MP4");
 });
 
 test("infers HLG, Dolby Vision, and alpha as best-effort values", () => {
@@ -221,6 +230,8 @@ test("probes media and creates a cached sprite and waveform without changing the
     const movBeforeDigest = fileDigest(movPath);
     const metadata = await service.metadataFor(sourcePath);
 
+    assert.equal(metadata.format, "MPEG-4 / MP4");
+    assert.equal(metadata.formatShort, "mp4");
     assert.equal(metadata.videoCodecShort, "mpeg4");
     assert.equal(metadata.audioCodecShort, "aac");
     assert.equal(metadata.resolution, "320 × 180");
@@ -278,9 +289,13 @@ test("probes media and creates a cached sprite and waveform without changing the
     const frameMetadata = await service.metadataFor(framePath);
     assert.equal(frameMetadata.resolution, "160 × 90");
 
-    const projectFramePath = await service.captureFrameForProject(sourcePath, 0.75);
+    const projectFramePath = await service.captureFrameForProject(sourcePath, 0.75, { now: new Date("2026-09-06T14:32:00.000Z") });
     assert.equal(path.extname(projectFramePath), ".png");
     assert.equal(projectFramePath.startsWith(path.join(fixture, "Pictures", "LK‘s File Bridge Captures")), true);
+    const captureDate = new Date("2026-09-06T14:32:00.000Z");
+    const two = (value) => String(value).padStart(2, "0");
+    const captureStamp = `${captureDate.getFullYear()}${two(captureDate.getMonth() + 1)}${two(captureDate.getDate())}-${two(captureDate.getHours())}${two(captureDate.getMinutes())}`;
+    assert.match(path.basename(projectFramePath), new RegExp(`^source clip_Screenshot_${captureStamp}(?:-\\d+)?\\.png$`));
     assert.equal(fs.existsSync(projectFramePath), true);
     const projectFrameMetadata = await service.metadataFor(projectFramePath);
     assert.equal(projectFrameMetadata.resolution, "320 × 180");
@@ -296,6 +311,16 @@ test("probes media and creates a cached sprite and waveform without changing the
     assert.ok(fs.statSync(transcoded).size > 0);
     const transcodeMetadata = await service.metadataFor(transcoded);
     assert.equal(transcodeMetadata.resolution, "640 × 360");
+
+    const unicodeSource = path.join(fixture, "女生文件 片段.mp4");
+    const unicodeTemporary = path.join(fixture, ".女生文件 片段-test.lkfb-part.mp4");
+    fs.copyFileSync(sourcePath, unicodeSource);
+    const unicodeMetadata = await service.metadataFor(unicodeSource);
+    assert.equal(unicodeMetadata.format, "MPEG-4 / MP4");
+    await service.transcodeTo(unicodeSource, unicodeTemporary, "360");
+    const unicodeTranscoded = await service.claimTranscodeOutput(unicodeTemporary, unicodeSource, "360");
+    assert.match(path.basename(unicodeTranscoded), /^女生文件 片段_Proxy_360p(?:-\d+)?\.mp4$/);
+    assert.equal(fs.existsSync(unicodeTranscoded), true);
 
     const after = fs.statSync(sourcePath);
     assert.equal(after.size, before.size);

@@ -42,3 +42,38 @@ test("Premiere insertion supports current time, first frame, and sequence tail",
   }
   assert.deepEqual(inserted, ["100", "0", "900"]);
 });
+
+test("Premiere imports plugin screenshots directly into the project root", () => {
+  const importedInto = [];
+  const mediaItem = { name: "镜头_Screenshot_20260906-1432.png", getMediaPath: () => "/tmp/镜头_Screenshot_20260906-1432.png" };
+  let imported = false;
+  function File(value) { this.fsName = String(value); this.name = path.basename(this.fsName); this.exists = true; }
+  function Folder() {}
+  Folder.fs = "Macintosh";
+  const rootItem = {
+    children: { numItems: 0 },
+    findItemsMatchingMediaPath: () => {
+      const result = imported ? [mediaItem] : [];
+      result.numItems = result.length;
+      return result;
+    }
+  };
+  const context = {
+    $: { global: {} },
+    app: {
+      name: "Adobe Premiere Pro",
+      project: {
+        rootItem,
+        importFiles: (_paths, _suppressUI, destination) => { importedInto.push(destination); imported = true; return true; },
+        sequences: { numSequences: 0 }
+      }
+    },
+    BridgeTalk: { appName: "premierepro" }, File, Folder, JSON, isFinite, parseInt, Error, String, Number, Boolean, Math, RegExp, Array, Object
+  };
+  vm.createContext(context);
+  vm.runInContext(hostSource, context, { filename: "host.jsx" });
+  const result = JSON.parse(context.$.global.SeekBridge.importMedia(JSON.stringify({ path: "/tmp/镜头_Screenshot_20260906-1432.png" })));
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(importedInto[0], rootItem);
+});

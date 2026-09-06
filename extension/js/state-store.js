@@ -20,6 +20,7 @@
       scanMode: "single",
       activeRootId: "",
       viewMode: "card",
+      cardStyle: "info",
       searchOpen: false,
       colorManagementNoticeSeen: false
     }
@@ -74,6 +75,7 @@
       result.preferences.scanMode = ["single", "selected", "all"].indexOf(state.preferences.scanMode) !== -1 ? state.preferences.scanMode : result.preferences.scanMode;
       result.preferences.activeRootId = String(state.preferences.activeRootId || "");
       result.preferences.viewMode = state.preferences.viewMode === "list" ? "list" : "card";
+      result.preferences.cardStyle = state.preferences.cardStyle === "clean" ? "clean" : "info";
       result.preferences.searchOpen = state.preferences.searchOpen === true;
       result.preferences.colorManagementNoticeSeen = state.preferences.colorManagementNoticeSeen === true;
     }

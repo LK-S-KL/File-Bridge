@@ -35,6 +35,7 @@ test("prepares only listed, in-scope, existing regular files", async () => {
   try {
     const used = path.join(item.rootA, "项目", "镜头", "used.mp4");
     const plan = await createPackager().prepare({
+      flatten: false,
       roots: [
         { id: "a", path: item.rootA, label: "团队素材 A" },
         { id: "b", path: item.rootB, label: "团队素材 B" }
@@ -66,6 +67,7 @@ test("packages used timeline media with byte progress and a deterministic manife
     const video = path.join(item.rootA, "项目", "镜头", "used.mp4");
     const audio = path.join(item.rootB, "music.wav");
     const result = await createPackager().packageProject({
+      flatten: false,
       destination,
       roots: [
         { id: "a", path: item.rootA, label: "团队素材 A" },
@@ -99,6 +101,70 @@ test("packages used timeline media with byte progress and a deterministic manife
     assert.ok(progress.some((entry) => entry.phase === "copy" && entry.bytesCompleted > 0));
     assert.equal(progress.at(-1).phase, "complete");
     assert.equal(progress.at(-1).percent, 1);
+  } finally {
+    fs.rmSync(item.fixture, { recursive: true, force: true });
+  }
+});
+
+test("uses a flat destination by default and disambiguates duplicate basenames", async () => {
+  const item = makeFixture();
+  const duplicate = path.join(item.rootB, "used.mp4");
+  const destination = path.join(item.fixture, "扁平交付包");
+  fs.writeFileSync(duplicate, Buffer.alloc(64, 19));
+  try {
+    const result = await createPackager().packageProject({
+      destination,
+      roots: [
+        { id: "a", path: item.rootA, label: "团队素材 A" },
+        { id: "b", path: item.rootB, label: "团队素材 B" }
+      ],
+      media: [
+        { path: path.join(item.rootA, "项目", "镜头", "used.mp4"), rootId: "a" },
+        { path: duplicate, rootId: "b" }
+      ]
+    });
+    assert.equal(result.complete, true);
+    assert.equal(fs.existsSync(path.join(destination, "used.mp4")), true);
+    assert.equal(fs.existsSync(path.join(destination, "used-2.mp4")), true);
+    assert.deepEqual(result.copied.map((entry) => entry.packagedPath).sort(), ["used-2.mp4", "used.mp4"]);
+    const manifest = JSON.parse(fs.readFileSync(result.manifestPath, "utf8"));
+    assert.equal(manifest.layout, "flat");
+    assert.ok(manifest.roots.every((root) => root.packageFolder === ""));
+  } finally {
+    fs.rmSync(item.fixture, { recursive: true, force: true });
+  }
+});
+
+test("does not collide on case-only names on macOS", () => {
+  const seen = {};
+  assert.equal(packagerModule.flatName(path, "/素材/A.MP4", seen, "darwin"), "A.MP4");
+  assert.equal(packagerModule.flatName(path, "/素材/a.mp4", seen, "darwin"), "a-2.mp4");
+});
+
+test("reserves the package manifest filename when flattening", () => {
+  const seen = {};
+  assert.equal(packagerModule.flatName(path, "/素材/LK-File-Bridge-package.json", seen, "darwin"), "LK-File-Bridge-package-2.json");
+});
+
+test("includes an explicitly reported plugin screenshot root without scanning it", async () => {
+  const item = makeFixture();
+  const captureRoot = path.join(item.fixture, "Screenshots");
+  const screenshot = path.join(captureRoot, "镜头_Screenshot_20260906-1432.png");
+  const destination = path.join(item.fixture, "截图交付包");
+  fs.mkdirSync(captureRoot);
+  fs.writeFileSync(screenshot, "png fixture", "utf8");
+  fs.writeFileSync(path.join(captureRoot, "unused.png"), "must not copy", "utf8");
+  try {
+    const result = await createPackager().packageProject({
+      destination,
+      roots: [{ id: "a", path: item.rootA, label: "团队素材 A" }],
+      media: [{ path: screenshot, rootId: "capture", rootPath: captureRoot, rootLabel: "Plugin screenshots", pluginGenerated: true, sourceKind: "screenshot" }]
+    });
+    assert.equal(result.complete, true);
+    assert.equal(fs.readFileSync(path.join(destination, path.basename(screenshot)), "utf8"), "png fixture");
+    assert.equal(fs.existsSync(path.join(destination, "unused.png")), false);
+    assert.equal(result.copied[0].pluginGenerated, true);
+    assert.equal(result.copied[0].sourceKind, "screenshot");
   } finally {
     fs.rmSync(item.fixture, { recursive: true, force: true });
   }
@@ -172,6 +238,7 @@ test("does not follow a destination symlink outside the selected package folder"
   fs.symlinkSync(outsideDestination, path.join(destination, "Media"), "dir");
   try {
     const result = await createPackager().packageProject({
+      flatten: false,
       destination,
       roots: [{ id: "a", path: item.rootA, label: "团队素材 A" }],
       media: [{ path: path.join(item.rootA, "项目", "镜头", "used.mp4"), rootId: "a" }]

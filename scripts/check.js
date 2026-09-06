@@ -53,6 +53,7 @@ assert.match(mainSource, /scanLibraryAsync/, "CEP must use the asynchronous SMB 
 assert.match(mainSource, /previewProxyFor/, "The viewer must support compatibility proxies");
 assert.match(mainSource, /audioProxyFor/, "The viewer must prepare an audio-only drag proxy");
 assert.match(mainSource, /captureFrameForProject/, "The viewer must create persistent project screenshots");
+assert.match(mainSource, /directImport: true/, "Project screenshots must import as standalone project files");
 assert.doesNotMatch(mainSource, /MAX_RENDERED_ASSETS/, "Search results must not stop at a fixed rendered-item cap");
 assert.match(mainSource, /media\.controls = false/, "The viewer must use one custom timeline instead of native duplicate controls");
 assert.doesNotMatch(indexSource, /scanModeSelect|本次浏览范围/, "Root selection must use direct checkboxes without a separate scan mode");
@@ -63,6 +64,8 @@ assert.match(panelCssSource, /V4_FINAL_CASCADE/, "The narrow-panel layout constr
 assert.match(fs.readFileSync(lutToolsPath, "utf8"), /LUT_3D_SIZE/, "The LUT parser must support .cube 3D LUTs");
 assert.match(mediaToolsSource, /MAX_FFMPEG_CONCURRENCY/, "Media jobs must have a global per-panel concurrency limit");
 assert.match(mediaToolsSource, /cancelViewerJobs/, "Closing the viewer must be able to cancel preview transcodes");
+assert.match(mediaToolsSource, /MPEG-4 \/ MP4/, "MP4 metadata must not inherit the QuickTime/MOV long name");
+assert.match(mediaToolsSource, /_Screenshot_/, "Project screenshots must use the stable source-name convention");
 assert.match(stateStoreSource, /\.state-write-lock/, "Cross-host local metadata writes must be serialized");
 assert.match(fs.readFileSync(timecodePath, "utf8"), /isDropFrame/, "SMPTE drop-frame timecode support must be present");
 assert.match(hostSource, /listUsedPremiereMedia/, "The host must expose the used-timeline-media inventory API");
@@ -70,7 +73,10 @@ assert.match(hostSource, /sequence\.videoTracks/, "Project packaging must inspec
 assert.match(hostSource, /sequence\.audioTracks/, "Project packaging must inspect Premiere audio tracks");
 assert.match(hostSource, /payload\.position === "start"/, "Premiere insertion must support the first frame");
 assert.match(hostSource, /payload\.position === "end"/, "Premiere insertion must support the sequence tail");
+assert.match(hostSource, /captureRoots/, "Premiere packaging must accept explicitly opted-in plugin screenshot roots");
+assert.match(hostSource, /directToProject/, "Plugin screenshots must be importable at the Premiere project root");
 assert.match(projectPackagerSource, /function copyWithProgress/, "Project packaging must copy from the host-provided media inventory");
+assert.match(projectPackagerSource, /function flatName/, "Project packaging must avoid recreating long source folder paths by default");
 assert.match(projectPackagerSource, /OUT_OF_SCOPE/, "Project packaging must reject media outside configured roots");
 assert.doesNotMatch(projectPackagerSource, /readdir|opendir/, "Project packaging must never scan unrelated files from configured roots");
 assert.match(assetOpsSource, /COPYFILE_EXCL/, "External imports and copies must never overwrite existing media");
