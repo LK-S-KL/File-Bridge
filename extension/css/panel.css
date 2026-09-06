@@ -1109,7 +1109,7 @@ body { background: var(--bg); }
   background: transparent;
 }
 .topbar .brand { display: none; }
-.location-bar { display: flex; align-items: center; padding-right: 12px; }
+.location-bar { display: none !important; }
 .location-bar .path-button { width: auto; flex: 1 1 auto; }
 .location-refresh,
 .location-bar .add-location { width: 30px; height: 30px; flex: 0 0 30px; }
@@ -1314,7 +1314,8 @@ body { background: var(--bg); }
   .location-bar .add-location { width: 28px; height: 28px; flex-basis: 28px; }
   .toolbar-left { gap: 3px; }
   .toolbar-left .tool-button { flex-basis: 29px; width: 29px; }
-  .toolbar-right { gap: 7px; }
+  .toolbar-right { gap: 7px; grid-template-columns: 1fr; }
+  .toolbar-right .folder-tool { justify-self: end; }
   .zoom-control { min-width: 88px; }
 }
 @media (max-width: 390px) {
