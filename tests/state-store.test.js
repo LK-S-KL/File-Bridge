@@ -18,6 +18,7 @@ test("persists multiple roots and local asset metadata atomically", () => {
         { id: "two", path: "/Volumes/素材二", label: "素材二", enabled: true }
       ],
       assetMeta: { "/Volumes/素材一/a.mp4": { favorite: true, label: "blue" } },
+      pluginFolders: [{ id: "pf-one", name: "精选", parentId: "", assetKeys: ["/Volumes/素材一/a.mp4"] }],
       libraryCache: { one: [{ name: "a.mp4", path: "/Volumes/素材一/a.mp4", relativePath: "a.mp4", folder: "根目录", extension: "mp4", type: "video", size: 12, modifiedMs: 20 }] },
       preferences: {
         sortBy: "size",
@@ -32,6 +33,7 @@ test("persists multiple roots and local asset metadata atomically", () => {
     const loaded = store.load();
     assert.equal(loaded.roots.length, 2);
     assert.equal(loaded.assetMeta["/Volumes/素材一/a.mp4"].favorite, true);
+    assert.equal(loaded.pluginFolders[0].name, "精选");
     assert.equal(loaded.preferences.sortBy, "size");
     assert.equal(loaded.preferences.zoom, 176);
     assert.equal(loaded.preferences.scanMode, "selected");

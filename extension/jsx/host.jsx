@@ -543,6 +543,21 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         return { item: item, imported: true };
     }
 
+    function pproLabelIndex(value) {
+        var map = { none: -1, violet: 0, iris: 1, caribbean: 2, lavender: 3, cerulean: 4, forest: 5, rose: 6, mango: 7, purple: 8, blue: 9, teal: 10, magenta: 11, tan: 12, green: 13, brown: 14, yellow: 15, red: 6, orange: 7 };
+        var key = String(value || "none").toLowerCase();
+        return map[key] === undefined ? -1 : map[key];
+    }
+
+    function pproSetColorLabel(projectItem, value) {
+        var index = pproLabelIndex(value);
+        if (!projectItem || index < 0) { return false; }
+        try {
+            if (typeof projectItem.setColorLabel === "function") { projectItem.setColorLabel(index); return true; }
+        } catch (ignoreSetColorLabelError) {}
+        try { projectItem.label = index; return true; } catch (ignoreLabelPropertyError) { return false; }
+    }
+
     function pproImport(payload, placeAtPlayhead) {
         var project = app.project;
         var sequence;
@@ -571,6 +586,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
            flag is preferred; the filename check keeps older panel builds
            compatible with the new capture naming convention. */
         imported = pproEnsureImported(project, mediaFile, payload.directImport === true || /_Screenshot_\d{8}-\d{4}(?:-\d+)?\.png$/i.test(String(mediaFile.name || "")));
+        if (payload.colorLabel) { pproSetColorLabel(imported.item, payload.colorLabel); }
 
         if (placeAtPlayhead) {
             insertTime = sequence.getPlayerPosition();
@@ -601,6 +617,107 @@ $.global.SeekBridge = $.global.SeekBridge || {};
             placed: placeAtPlayhead,
             path: mediaFile.fsName
         };
+    }
+
+    function pproClipSelected(clip) {
+        try {
+            if (typeof clip.isSelected === "function") { return clip.isSelected() === true; }
+        } catch (ignoreSelectedMethodError) {}
+        try { return clip.selected === true; } catch (ignoreSelectedPropertyError) { return false; }
+    }
+
+    function pproSelectedVideoClips(sequence) {
+        var selected = [];
+        var trackIndex;
+        var clipIndex;
+        var track;
+        var clips;
+        var clip;
+        var trackCount = pproCollectionCount(sequence && sequence.videoTracks, "numTracks");
+        for (trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+            track = pproCollectionItem(sequence.videoTracks, trackIndex);
+            clips = track && track.clips;
+            for (clipIndex = 0; clipIndex < pproCollectionCount(clips, "numItems"); clipIndex += 1) {
+                clip = pproCollectionItem(clips, clipIndex);
+                if (clip && pproClipSelected(clip)) { selected.push({ clip: clip, trackIndex: trackIndex, clipIndex: clipIndex }); }
+            }
+        }
+        return selected;
+    }
+
+    function pproFindLumetriComponent(clip) {
+        var components;
+        var i;
+        var component;
+        try { components = clip.components; } catch (ignoreComponentsError) { return null; }
+        for (i = 0; components && i < components.numItems; i += 1) {
+            component = components[i];
+            if (component && /lumetri/i.test(String(component.displayName || component.name || ""))) { return component; }
+        }
+        return null;
+    }
+
+    function pproSetLumetriInput(component, lutPath) {
+        var properties;
+        var i;
+        var property;
+        var name;
+        if (!component) { return false; }
+        try { properties = component.properties; } catch (ignorePropertiesError) { return false; }
+        for (i = 0; properties && i < properties.numItems; i += 1) {
+            property = properties[i];
+            name = String(property && (property.displayName || property.name) || "");
+            if (/input\s*lut|lut/i.test(name) && property && typeof property.setValue === "function") {
+                try { property.setValue(lutPath, true); return true; } catch (ignoreSetValueError) {}
+            }
+        }
+        return false;
+    }
+
+    function pproSelectedVideoCount() {
+        var sequence = app.project && app.project.activeSequence;
+        return sequence ? pproSelectedVideoClips(sequence).length : 0;
+    }
+
+    function pproApplyLut(payload) {
+        var project = app.project;
+        var sequence;
+        var selected;
+        var qeProject;
+        var qeSequence;
+        var effect;
+        var applied = 0;
+        var i;
+        var qeTrack;
+        var qeClip;
+        var component;
+        if (!project || !project.rootItem) { throw makeError("NO_PROJECT", "Open a Premiere project first."); }
+        sequence = project.activeSequence;
+        if (!sequence) { throw makeError("NO_ACTIVE_SEQUENCE", "Open a Premiere sequence first."); }
+        if (!payload || typeof payload.path !== "string" || !payload.path.length) { throw makeError("INVALID_LUT", "A LUT file is required."); }
+        if (!new File(payload.path).exists) { throw makeError("FILE_NOT_FOUND", "The LUT file is unavailable."); }
+        selected = pproSelectedVideoClips(sequence);
+        if (!selected.length) { throw makeError("NO_SELECTED_VIDEO", "当前时间线未选中"); }
+        try {
+            qeProject = qeProject || (typeof qe !== "undefined" ? qe : null);
+            if (!qeProject && typeof app.enableQE === "function") { app.enableQE(); qeProject = qe; }
+            qeSequence = qeProject && qeProject.project ? qeProject.project.getActiveSequence() : null;
+            effect = qeProject && qeProject.project && qeProject.project.getVideoEffectByName ? qeProject.project.getVideoEffectByName("Lumetri Color") : null;
+            if (!qeSequence || !effect) { throw makeError("LUT_UNSUPPORTED", "当前 Premiere 版本无法调用 Lumetri Color。"); }
+            for (i = 0; i < selected.length; i += 1) {
+                qeTrack = qeSequence.getVideoTrackAt(selected[i].trackIndex);
+                qeClip = qeTrack && qeTrack.getItemAt(selected[i].clipIndex);
+                if (!qeClip || typeof qeClip.addVideoEffect !== "function") { continue; }
+                try { qeClip.addVideoEffect(effect); } catch (ignoreAddEffectError) {}
+                component = pproFindLumetriComponent(selected[i].clip);
+                if (pproSetLumetriInput(component, payload.path)) { applied += 1; }
+            }
+        } catch (error) {
+            if (error && error.seekCode) { throw error; }
+            throw makeError("LUT_UNSUPPORTED", error.message || String(error));
+        }
+        if (!applied) { throw makeError("LUT_UNSUPPORTED", "Lumetri 未提供可写入的 Input LUT 属性。"); }
+        return { ok: true, code: "OK", applied: applied, selected: selected.length, path: payload.path };
     }
 
     function pproCollectionCount(collection, preferredProperty) {
@@ -923,7 +1040,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.6.1";
+    ns.version = "0.6.2";
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };
@@ -932,6 +1049,24 @@ $.global.SeekBridge = $.global.SeekBridge || {};
     };
     ns.importMediaToComp = function (payloadJson) {
         return invoke(payloadJson, "place");
+    };
+    ns.getSelectedVideoCount = function () {
+        try {
+            if (hostName() !== "PPRO") { return toJson({ ok: false, code: "UNSUPPORTED_HOST", count: 0 }); }
+            return toJson({ ok: true, code: "OK", count: pproSelectedVideoCount() });
+        } catch (error) {
+            return toJson({ ok: false, code: error.seekCode || "INTERNAL_ERROR", count: 0, message: error.message || String(error) });
+        }
+    };
+    ns.applyLutToActiveVideo = function (payloadJson) {
+        var payload;
+        try {
+            if (hostName() !== "PPRO") { throw makeError("UNSUPPORTED_HOST", "LUT 应用仅支持 Premiere Pro。"); }
+            payload = parsePayload(payloadJson);
+            return toJson(pproApplyLut(payload));
+        } catch (error) {
+            return toJson({ ok: false, code: error.seekCode || "INTERNAL_ERROR", message: error.message || String(error) });
+        }
     };
     ns.listUsedPremiereMedia = function (payloadJson) {
         var payload;

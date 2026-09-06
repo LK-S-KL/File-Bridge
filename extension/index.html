@@ -33,14 +33,15 @@
             <button id="filterButton" class="tool-button icon-tool" type="button" data-hint="筛选" aria-label="筛选" aria-haspopup="true" aria-expanded="false"><span class="icon-filter" aria-hidden="true"></span><span id="filterBadge" class="filter-badge" hidden>0</span></button>
             <button id="viewModeButton" class="tool-button icon-tool" type="button" data-hint="切换列表 / 卡片" aria-label="切换列表或卡片模式"><span class="icon-view-grid" aria-hidden="true"></span></button>
             <button id="cardStyleButton" class="tool-button icon-tool" type="button" data-hint="切换信息卡 / 纯净卡" aria-label="切换信息卡或纯净卡模式" aria-pressed="false"><span class="icon-card-style" aria-hidden="true"></span></button>
-            <button id="packageProjectButton" class="tool-button icon-tool" type="button" data-hint="打包当前 Premiere 项目实际使用的素材" aria-label="打包当前项目素材"><span class="icon-package" aria-hidden="true"></span></button>
-          </div>
-          <div class="toolbar-right">
             <label class="zoom-control" title="缩略图大小">
               <span class="icon-thumb-small" aria-hidden="true"></span>
               <input id="zoomRange" type="range" min="88" max="260" step="1" value="128" aria-label="缩略图大小" />
               <span class="icon-thumb-large" aria-hidden="true"></span>
             </label>
+            <button id="packageProjectButton" class="tool-button icon-tool" type="button" data-hint="打包当前 Premiere 项目实际使用的素材" aria-label="打包当前项目素材"><span class="icon-package" aria-hidden="true"></span></button>
+          </div>
+          <div class="toolbar-right">
+            <button id="locationsToolbarButton" class="tool-button icon-tool folder-tool" type="button" title="素材位置" data-hint="素材位置" aria-label="打开素材位置" aria-haspopup="true" aria-expanded="false"><span class="icon-folder" aria-hidden="true"></span></button>
           </div>
         </div>
 
@@ -182,8 +183,8 @@
 
     <section id="lutViewer" class="viewer lut-viewer" hidden aria-label="LUT 预览">
       <header class="viewer-header"><div class="viewer-title"><strong id="lutViewerTitle"></strong><span id="lutViewerSubtitle">参考样片 · 近似预览</span></div><button id="closeLutViewerButton" class="icon-button viewer-close" type="button" aria-label="关闭 LUT 预览">&#215;</button></header>
-      <div class="lut-stage"><div class="lut-canvas-wrap"><canvas id="lutCanvas" width="512" height="288"></canvas><span class="lut-side-label lut-original-label">原图</span><span class="lut-side-label lut-result-label">LUT</span></div></div>
-      <div class="lut-controls"><label>左右对比 <input id="lutSplitRange" type="range" min="0" max="100" value="50" /></label><label>效果强度 <input id="lutOpacityRange" type="range" min="0" max="100" value="100" /></label><button id="installLutButton" class="button button-secondary" type="button">复制到 Lumetri LUT 目录</button><p>浏览器 Canvas 为 sRGB 8-bit，输入色彩空间或 Log/HDR 不匹配时不会与 Lumetri 完全一致；此处仅用于方向预览。</p></div>
+      <div class="lut-stage"><div class="lut-canvas-wrap"><canvas id="lutCanvas" width="1024" height="576"></canvas><span class="lut-side-label lut-original-label">原图</span><span class="lut-side-label lut-result-label">LUT</span><span id="lutDivider" class="lut-divider" role="separator" aria-label="拖动分割线"></span></div></div>
+      <div class="lut-controls"><div class="lut-compare-buttons" role="group" aria-label="LUT 对比模式"><button id="lutCompareToggle" class="button button-secondary is-active" type="button">切换对比</button><button id="lutSplitMode" class="button button-secondary" type="button">分割对比</button><button id="lutSliderMode" class="button button-secondary" type="button">滑动对比</button></div><label>分割位置 <input id="lutSplitRange" type="range" min="0" max="100" value="50" /></label><label>效果强度 <input id="lutOpacityRange" type="range" min="0" max="100" value="100" /></label><button id="installLutButton" class="button button-primary" type="button">应用到当前视频</button><span id="lutApplyStatus" class="lut-apply-status" role="status"></span></div>
     </section>
 
     <div id="fileActionDialog" class="dialog-backdrop" hidden>

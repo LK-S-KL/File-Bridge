@@ -12,6 +12,7 @@
     schemaVersion: 1,
     roots: [],
     assetMeta: {},
+    pluginFolders: [],
     libraryCache: {},
     preferences: {
       sortBy: "modified",
@@ -49,6 +50,13 @@
     }
     if (state.assetMeta && typeof state.assetMeta === "object") {
       result.assetMeta = state.assetMeta;
+    }
+    if (Array.isArray(state.pluginFolders)) {
+      result.pluginFolders = state.pluginFolders.slice(0, 256).filter(function (folder) {
+        return folder && typeof folder.id === "string" && typeof folder.name === "string" && folder.name.length;
+      }).map(function (folder) {
+        return { id: folder.id, name: folder.name, parentId: String(folder.parentId || ""), assetKeys: Array.isArray(folder.assetKeys) ? folder.assetKeys.slice(0, 20000).filter(function (key) { return typeof key === "string"; }) : [] };
+      });
     }
     if (state.libraryCache && typeof state.libraryCache === "object") {
       Object.keys(state.libraryCache).slice(0, 128).forEach(function (rootId) {

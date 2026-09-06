@@ -77,3 +77,38 @@ test("Premiere imports plugin screenshots directly into the project root", () =>
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(importedInto[0], rootItem);
 });
+
+test("Premiere LUT application reports an empty video selection without touching the project", () => {
+  function File(value) { this.fsName = String(value); this.name = path.basename(this.fsName); this.exists = true; }
+  function Folder() {}
+  Folder.fs = "Macintosh";
+  const sequence = {
+    videoTracks: { numTracks: 1, 0: { clips: { numItems: 1, 0: { isSelected: () => false } } } },
+    audioTracks: { numTracks: 0 }
+  };
+  const context = {
+    $: { global: {} },
+    app: { name: "Adobe Premiere Pro", project: { rootItem: {}, activeSequence: sequence, sequences: { numSequences: 0 } } },
+    BridgeTalk: { appName: "premierepro" }, File, Folder, JSON, isFinite, parseInt, Error, String, Number, Boolean, Math, RegExp, Array, Object
+  };
+  vm.createContext(context);
+  vm.runInContext(hostSource, context, { filename: "host.jsx" });
+  assert.equal(JSON.parse(context.$.global.SeekBridge.getSelectedVideoCount()).count, 0);
+  const result = JSON.parse(context.$.global.SeekBridge.applyLutToActiveVideo(JSON.stringify({ path: "/tmp/look.cube" })));
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "NO_SELECTED_VIDEO");
+});
+
+test("Premiere import carries the plugin label index to the project item", () => {
+  const labels = [];
+  const mediaItem = { name: "clip.mp4", getMediaPath: () => "/tmp/clip.mp4", setColorLabel: (value) => labels.push(value) };
+  function File(value) { this.fsName = String(value); this.name = path.basename(this.fsName); this.exists = true; }
+  function Folder() {}
+  Folder.fs = "Macintosh";
+  const rootItem = { children: { numItems: 0 }, findItemsMatchingMediaPath: () => Object.assign([mediaItem], { numItems: 1 }) };
+  const context = { $: { global: {} }, app: { name: "Adobe Premiere Pro", project: { rootItem, sequences: { numSequences: 0 } } }, BridgeTalk: { appName: "premierepro" }, File, Folder, JSON, isFinite, parseInt, Error, String, Number, Boolean, Math, RegExp, Array, Object };
+  vm.createContext(context); vm.runInContext(hostSource, context, { filename: "host.jsx" });
+  const result = JSON.parse(context.$.global.SeekBridge.importMedia(JSON.stringify({ path: "/tmp/clip.mp4", colorLabel: "rose" })));
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(labels, [6]);
+});

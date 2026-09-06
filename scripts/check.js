@@ -54,6 +54,8 @@ assert.match(mainSource, /previewProxyFor/, "The viewer must support compatibili
 assert.match(mainSource, /audioProxyFor/, "The viewer must prepare an audio-only drag proxy");
 assert.match(mainSource, /captureFrameForProject/, "The viewer must create persistent project screenshots");
 assert.match(mainSource, /directImport: true/, "Project screenshots must import as standalone project files");
+assert.match(mainSource, /selectionMode/, "Selection must enter an explicit check mode instead of selecting everything immediately");
+assert.match(mainSource, /pluginFolders/, "Plugin-owned folders must be persisted independently of local folders");
 assert.doesNotMatch(mainSource, /MAX_RENDERED_ASSETS/, "Search results must not stop at a fixed rendered-item cap");
 assert.match(mainSource, /media\.controls = false/, "The viewer must use one custom timeline instead of native duplicate controls");
 assert.doesNotMatch(indexSource, /scanModeSelect|本次浏览范围/, "Root selection must use direct checkboxes without a separate scan mode");
@@ -75,6 +77,7 @@ assert.match(hostSource, /payload\.position === "start"/, "Premiere insertion mu
 assert.match(hostSource, /payload\.position === "end"/, "Premiere insertion must support the sequence tail");
 assert.match(hostSource, /captureRoots/, "Premiere packaging must accept explicitly opted-in plugin screenshot roots");
 assert.match(hostSource, /directToProject/, "Plugin screenshots must be importable at the Premiere project root");
+assert.match(hostSource, /applyLutToActiveVideo/, "Premiere host must expose guarded LUT application");
 assert.match(projectPackagerSource, /function copyWithProgress/, "Project packaging must copy from the host-provided media inventory");
 assert.match(projectPackagerSource, /function flatName/, "Project packaging must avoid recreating long source folder paths by default");
 assert.match(projectPackagerSource, /OUT_OF_SCOPE/, "Project packaging must reject media outside configured roots");

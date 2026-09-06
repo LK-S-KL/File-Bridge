@@ -21,7 +21,7 @@ LK‘s File Bridge 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的�
 - 预览画面可拖入 Premiere；按住 Alt 拖动视频时发送预先生成的纯音频副本
 - 一键从原始视频生成原尺寸 PNG 并导入 Premiere 项目
 - 截图命名为“源文件名_Screenshot_YYYYMMDD-HHmm”，作为普通文件直接导入 Premiere 项目根目录
-- `.cube` LUT 解析、低对比风景样片、左右原图/LUT 对比和效果强度调节；可明确选择复制到 Lumetri Creative LUT 目录
+- `.cube` LUT 解析、合成 Log 风景参考片、切换/分割/滑动对比和效果强度调节；Premiere 时间线选中视频后可尝试直接应用 Lumetri Input LUT
 - 右键悬浮查看格式、时长、码率、编码、分辨率、帧率、色彩空间、动态范围、Alpha、像素格式、位深、音频声道等元数据
 - 右键把视频转码为 1080p、720p 或 360p MP4，输出到源文件当前目录；优先使用 macOS VideoToolbox
 - 转码显示实时进度并使用 Proxy 文件名；支持多选后批量收藏、标签、置顶、转码、创建副本、移动、删除、导入或插入
@@ -37,7 +37,7 @@ LK‘s File Bridge 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的�
 
 ## LUT 与 Lumetri 的边界
 
-Premiere CEP 没有稳定的公开接口，可让扩展面板把任意 `.cube` 路径直接交给 Lumetri 并返回原生渲染画面。LK‘s File Bridge 因此在 Canvas 中做 8-bit sRGB 三线性插值预览，用于挑选方向；它不会伪装成最终调色结果。只有用户明确点击“复制到 Lumetri LUT 目录”时，才会写入 Adobe 用户级 `Creative` LUT 目录，重启 Premiere 后可在 Lumetri 中选择。
+LK‘s File Bridge 在 Canvas 中做 8-bit sRGB 三线性插值预览，用于挑选方向；它不会伪装成最终调色结果。Premiere 25.x 的 CEP/QE 宿主会在时间线选中视频时尝试添加 Lumetri Color 并写入 Input LUT；如果当前版本没有可写的 Lumetri 属性，会明确返回不支持，而不会伪造成功状态。
 
 ## Adobe 拖拽边界
 
@@ -80,8 +80,8 @@ npm run package:internal
 
 脚本会在桌面生成：
 
-- `LK‘s File Bridge 0.6.1 第五版修复内测.dmg`
-- `LK‘s File Bridge 0.6.1 第五版修复内测.zip`
+- `LK‘s File Bridge 0.6.2 v0.6迭代内测.dmg`
+- `LK‘s File Bridge 0.6.2 v0.6迭代内测.zip`
 
 这是未签名 CEP 内测包。给同事时优先发送 DMG；双击后运行“安装 LK‘s File Bridge.command”，再重启 Adobe 软件。安装脚本会自动开启 CSXS 12 的 PlayerDebugMode，并在覆盖旧版本前保留带时间戳的备份。
 
@@ -96,6 +96,8 @@ Premiere 与 AE 的调试端口分别为 `9360` 和 `9361`。
 版本发布和日常维护分别参见 [`docs/RELEASING.md`](docs/RELEASING.md) 与 [`CONTRIBUTING.md`](CONTRIBUTING.md)。当前开发版内部 ID 暂时保留为 `com.fnnas.seekbridge.mvp`，避免破坏本机安装和数据；第一次正式发布前应确定并冻结最终 ID，发布后不要随意更换。
 
 第五版逐条实现与验收记录见 [`docs/V5_ACCEPTANCE.md`](docs/V5_ACCEPTANCE.md)。
+
+本轮 v0.6 迭代（82–112）验收记录见 [`docs/V6_ACCEPTANCE.md`](docs/V6_ACCEPTANCE.md)。
 
 ## 卸载开发版
 
