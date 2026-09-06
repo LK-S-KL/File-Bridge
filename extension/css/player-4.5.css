@@ -23,7 +23,7 @@
   min-height: 132px;
   grid-template-rows: 28px 24px 1fr;
   gap: 0;
-  padding: 8px 16px 10px;
+  padding: 16px 16px 2px;
   border: 1px solid var(--player-border);
   border-radius: 7px;
   background: var(--player-surface);
@@ -314,11 +314,12 @@
 @media (max-width: 560px) {
   .viewer-timeline {
     min-height: 176px;
-    grid-template-rows: 28px 24px 32px 32px;
-    padding: 8px 16px 10px;
+    grid-template-rows: 28px 24px 90px;
+    align-content: start;
+    padding: 16px 16px 2px;
   }
 
-  .viewer-transport { display: grid; grid-template-columns: 1fr; grid-template-rows: 32px 32px; gap: 8px; }
+  .viewer-transport { display: grid; height: 90px; grid-template-columns: 1fr; grid-template-rows: 32px 32px; align-content: start; gap: 14px; padding-top: 12px; }
   .transport-left { grid-row: 1; }
   .transport-right { grid-row: 2; width: 312px; justify-self: end; margin-left: 0; }
   .volume-control input { width: 74px; }

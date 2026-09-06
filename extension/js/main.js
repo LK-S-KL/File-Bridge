@@ -2327,7 +2327,7 @@
     elements.loopButton.setAttribute("aria-pressed", "false");
     elements.viewerScrubber.value = "0";
     setViewerPlayState(false);
-    elements.viewerTimecode.textContent = "00:00:00:00";
+    elements.viewerTimecode.textContent = "00:00:00:00 / --:--";
     updateViewerMarks();
     if (asset.type === "video") {
       media = document.createElement("video");
@@ -2566,7 +2566,11 @@
     var buffered = 0;
     if (!media || typeof media.currentTime !== "number") { return; }
     duration = isFinite(media.duration) && media.duration > 0 ? media.duration : 0;
-    elements.viewerTimecode.textContent = viewerState.timeDisplayMode === "frames" ? Math.max(0, Math.round(media.currentTime * viewerFrameRate())) + " F" : formatViewerTimecode(media.currentTime);
+    if (viewerState.timeDisplayMode === "frames") {
+      elements.viewerTimecode.textContent = Math.max(0, Math.round(media.currentTime * viewerFrameRate())) + " F / " + (duration ? Math.max(0, Math.round(duration * viewerFrameRate())) + " F" : "--");
+    } else {
+      elements.viewerTimecode.textContent = formatViewerTimecode(media.currentTime) + " / " + (duration ? formatViewerTimecode(duration) : "--:--:--:--");
+    }
     if (duration) {
       progress = Math.max(0, Math.min(100, media.currentTime / duration * 100));
       elements.timelineTrackWrap.style.setProperty("--viewer-progress", progress + "%");

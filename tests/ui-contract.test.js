@@ -127,4 +127,5 @@ test("player 4.5 follows the supplied five-control layout", () => {
   assert.match(main, /function\s+chooseViewerSpeed\s*\(event\)/);
   assert.match(main, /media\.playbackRate\s*=\s*viewerState\.playbackRate/);
   assert.match(main, /elements\.timelineTrackWrap\.style\.setProperty\("--viewer-buffered"/);
+  assert.match(main, /formatViewerTimecode\(media\.currentTime\) \+ " \/ "[\s\S]*formatViewerTimecode\(duration\)/);
 });
