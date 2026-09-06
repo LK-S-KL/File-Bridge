@@ -100,7 +100,7 @@
   function cacheElements() {
     [
       "appShell", "hostLabel", "refreshButton", "locationsButton", "addFolderButton", "upFolderButton", "mountStatus", "rootLabel",
-      "selectAllButton", "searchToggleButton", "inlineSearchField", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "cardStyleButton", "packageProjectButton", "locationsToolbarButton",
+      "selectAllButton", "searchToggleButton", "inlineSearchField", "favoriteOnlyButton", "sortButton", "sortPopover", "sortSelect", "sortDirectionButton", "filterButton", "viewModeButton", "listModeButton", "cardStyleButton", "packageProjectButton", "toolbarExportButton", "locationsToolbarButton",
       "searchInput", "clearSearchButton", "toolbarSearchPopover", "filterBadge", "zoomControl", "zoomRange", "resultCount", "packageProjectButton", "clearSelectionButton", "resultActionsButton", "resultActionsPopover", "createFolderFromResultsButton", "uploadFilesButton", "notice", "operationProgress", "operationProgressLabel", "operationProgressBar", "assetGrid", "emptyState", "emptyTitle", "emptyMessage", "previewDock", "previewDockOpenButton", "previewDockMedia", "previewDockTitle", "previewDockSubtitle", "previewDockProgress", "previewDockBackButton", "previewDockPlayButton", "previewDockForwardButton", "previewDockTime", "previewDockInfoList",
       "folderScopeBar", "folderBackButton", "folderScopeLabel",
       "statusText", "locationsPopover", "locationsList", "locationsBackButton", "closeLocationsPopover", "addFolderFromPopover", "toggleAllRootsButton", "filterPopover",
@@ -353,12 +353,15 @@
     if (elements.clearSelectionButton) { elements.clearSelectionButton.addEventListener("click", clearSelectedAssets); }
     if (elements.resultActionsButton) { elements.resultActionsButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.resultActionsPopover, elements.resultActionsButton); }); }
     elements.sortButton.addEventListener("click", function (event) { event.stopPropagation(); togglePopover(elements.sortPopover, elements.sortButton); });
-    elements.viewModeButton.addEventListener("click", toggleViewMode);
+    elements.viewModeButton.addEventListener("click", function () { setViewMode("card"); });
+    if (elements.listModeButton) { elements.listModeButton.addEventListener("click", function () { setViewMode("list"); }); }
     if (elements.cardStyleButton) { elements.cardStyleButton.addEventListener("click", toggleCardStyle); }
     elements.packageProjectButton.addEventListener("click", packageCurrentProject);
+    if (elements.toolbarExportButton) { elements.toolbarExportButton.addEventListener("click", packageCurrentProject); }
     elements.sortSelect.value = state.preferences.sortBy;
     elements.sortSelect.addEventListener("change", function () {
       state.preferences.sortBy = elements.sortSelect.value;
+      syncSortFieldLabel();
       persistPreferences();
       applyFilters();
     });
@@ -618,6 +621,7 @@
   }
 
   function toggleSearchPopover() {
+    if (!elements.toolbarSearchPopover || !elements.searchToggleButton) { return; }
     var show = elements.toolbarSearchPopover.hidden;
     var rect;
     var left;
@@ -2942,6 +2946,11 @@
     elements.sortDirectionButton.innerHTML = '<span class="ui-icon" data-icon="arrow-up-down" aria-hidden="true"></span><span>' + (asc ? "升序" : "降序") + '</span>';
     elements.sortDirectionButton.title = asc ? "升序" : "降序";
   }
+  function syncSortFieldLabel() {
+    var labels = { modified: "时间", name: "名称", size: "大小", type: "类型", duration: "时长" };
+    var label = document.querySelector(".sort-current-label");
+    if (label) { label.textContent = labels[state.preferences.sortBy] || "时间"; }
+  }
   function syncGridZoom() {
     var size = Math.max(150, Math.min(260, Number(state.preferences.zoom) || 190));
     var available = elements.assetGrid && elements.assetGrid.clientWidth ? Math.max(150, elements.assetGrid.clientWidth - 4) : size;
@@ -2963,7 +2972,10 @@
     }
   }
   function toggleViewMode() {
-    state.preferences.viewMode = state.preferences.viewMode === "list" ? "card" : "list";
+    setViewMode(state.preferences.viewMode === "list" ? "card" : "list");
+  }
+  function setViewMode(mode) {
+    state.preferences.viewMode = mode === "list" ? "list" : "card";
     persistPreferences(); syncViewMode(); syncGridZoom(); renderAssets();
   }
   function syncViewMode() {
@@ -2972,9 +2984,13 @@
     elements.zoomRange.disabled = list;
     elements.zoomRange.closest(".zoom-control").classList.toggle("is-disabled", list);
     elements.zoomRange.setAttribute("aria-disabled", list ? "true" : "false");
-    elements.viewModeButton.classList.remove("is-active");
-    elements.viewModeButton.querySelector("span").className = list ? "icon-view-list" : "icon-view-grid";
-    elements.viewModeButton.setAttribute("aria-label", list ? "切换到卡片模式" : "切换到列表模式");
+    elements.viewModeButton.classList.toggle("is-active", !list);
+    elements.viewModeButton.setAttribute("aria-pressed", list ? "false" : "true");
+    elements.viewModeButton.setAttribute("aria-label", "卡片视图");
+    if (elements.listModeButton) {
+      elements.listModeButton.classList.toggle("is-active", list);
+      elements.listModeButton.setAttribute("aria-pressed", list ? "true" : "false");
+    }
     syncCardStyle();
   }
   function toggleCardStyle() {
@@ -2988,7 +3004,7 @@
     elements.assetGrid.classList.toggle("is-clean-card", clean);
     elements.assetGrid.setAttribute("data-card-style", clean ? "clean" : "info");
     if (elements.cardStyleButton) {
-      elements.cardStyleButton.hidden = state.preferences.viewMode === "list";
+      elements.cardStyleButton.hidden = false;
       elements.cardStyleButton.classList.remove("is-active");
       elements.cardStyleButton.setAttribute("aria-pressed", clean ? "true" : "false");
       elements.cardStyleButton.setAttribute("aria-label", clean ? "切换到信息卡模式" : "切换到纯净卡模式");
@@ -3000,8 +3016,9 @@
 
   function init() {
     cacheElements(); renderLabelFilterChoices(); ensureContextMenuExtensions(); initializeRoots(); detectHost(); bindEvents();
-    renderLocations(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncCardStyle(); syncSelectAllButton(); syncFilterBadge();
-    if (state.preferences.searchOpen) { toggleSearchPopover(); }
+    renderLocations(); syncSortFieldLabel(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncCardStyle(); syncSelectAllButton(); syncFilterBadge();
+    if (state.preferences.searchOpen && elements.searchToggleButton) { toggleSearchPopover(); }
+    else { state.preferences.searchOpen = false; }
     scanAssets();
   }
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }

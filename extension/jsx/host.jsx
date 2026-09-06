@@ -1040,7 +1040,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.6.5";
+    ns.version = "0.6.6";
     ns.importMedia = function (payloadJson) {
         return invoke(payloadJson, "import");
     };

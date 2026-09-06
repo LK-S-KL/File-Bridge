@@ -5,6 +5,7 @@ const test = require("node:test");
 const css = fs.readFileSync(new URL("../extension/css/panel.css", require("node:url").pathToFileURL(__filename)), "utf8");
 const main = fs.readFileSync(new URL("../extension/js/main.js", require("node:url").pathToFileURL(__filename)), "utf8");
 const html = fs.readFileSync(new URL("../extension/index.html", require("node:url").pathToFileURL(__filename)), "utf8");
+const uiCss = fs.readFileSync(new URL("../extension/css/ui-4.3.css", require("node:url").pathToFileURL(__filename)), "utf8");
 
 test("card grid keeps intrinsic rows and 16:9 thumbnails", () => {
   assert.match(css, /\.asset-thumb\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
@@ -43,4 +44,15 @@ test("plugin folders render as a separate hierarchy with a visible back control"
   assert.match(main, /parentId\s*=\s*pluginFolderParentId\(pluginFolder\)/);
   assert.match(main, /persistPluginFolders\(\);\s*rebuildAssetMap\(\);/);
   assert.match(main, /item\.type\s*===\s*"audio"[\s\S]*?waveformFor\(item\.path\)/);
+});
+
+test("UI 4.3 toolbar keeps the designed control groups", () => {
+  assert.match(html, /id="inlineSearchField"/);
+  assert.match(html, /id="listModeButton"/);
+  assert.match(html, /id="toolbarExportButton"/);
+  assert.match(html, /id="previewDock"/);
+  assert.match(uiCss, /\.toolbar-left #filterButton\s*\{[^}]*flex:\s*0 0 auto/s);
+  assert.match(uiCss, /\.toolbar-left \.sort-trigger\s*\{[^}]*min-width:\s*72px/s);
+  assert.match(uiCss, /\.ui-icon\[data-icon="download"\]/);
+  assert.match(uiCss, /\.preview-dock\s*\{/);
 });
