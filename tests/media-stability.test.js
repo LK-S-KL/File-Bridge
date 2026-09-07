@@ -4,6 +4,7 @@ const path = require("node:path");
 const os = require("node:os");
 const crypto = require("node:crypto");
 const EventEmitter = require("node:events");
+const childProcess = require("node:child_process");
 const test = require("node:test");
 const media = require("../extension/js/media-tools.js");
 
@@ -17,7 +18,9 @@ function fixture(options = {}) {
   const calls = [];
   const processRuntime = {
     execFile(binary, args, execOptions, callback) {
+      if (args[0] && args[0].endsWith("media-worker.pl") && args[1] === "--index") { return childProcess.execFile(binary, args, execOptions, callback); }
       if (options.spawnError) { options.spawnError = false; throw new Error("SPAWN_FAILURE"); }
+      if (args[0] && args[0].endsWith("media-worker.pl")) { binary = args[2]; args = args.slice(8); }
       const child = new EventEmitter();
       child.stdout = new EventEmitter();
       child.signals = []; child.kill = signal => child.signals.push(signal);
@@ -43,26 +46,25 @@ async function until(predicate) {
   }
 }
 
-test("cancelled media jobs settle immediately, escalate KILL, and recover both queue slots", async () => {
+test("cancelled media jobs settle immediately, escalate KILL, and recover the single decoder slot", async () => {
   const f = fixture();
   try {
     const first = f.service.previewProxyFor(f.sources[0], "720").then(() => null, error => error);
     const second = f.service.previewProxyFor(f.sources[1], "720").then(() => null, error => error);
     const third = f.service.previewProxyFor(f.sources[2], "720");
-    await until(() => f.calls.length === 2);
+    await until(() => f.calls.length === 1);
     await assert.rejects(f.service.prepare({ retry: true }), { code: "MEDIA_TOOLS_BUSY" });
     assert.equal(f.service.getStatus().state, "ready");
     f.service.cancelViewerJobs(f.sources[0]); f.service.cancelViewerJobs(f.sources[1]);
     assert.equal((await first).code, "JOB_CANCELLED");
     assert.equal((await second).code, "JOB_CANCELLED");
-    await until(() => f.calls.length === 3);
+    await until(() => f.calls.length === 2);
     assert.deepEqual(f.calls[0].child.signals, ["SIGTERM", "SIGKILL"]);
-    assert.deepEqual(f.calls[1].child.signals, ["SIGTERM", "SIGKILL"]);
-    const current = f.calls[2];
+    const current = f.calls[1];
     fs.writeFileSync(current.args.at(-1), "finished output"); current.callback(null, "", "");
     assert.equal(fs.existsSync(await third), true);
-    f.calls[0].callback(null, "late", ""); f.calls[1].callback(null, "late", "");
-    assert.equal(f.calls.length, 3, "cancellation must not start software fallback");
+    f.calls[0].callback(null, "late", "");
+    assert.equal(f.calls.length, 2, "queued cancellation and active cancellation must not start software fallback");
   } finally { f.cleanup(); }
 });
 
@@ -93,7 +95,7 @@ test("cache pruning removes fresh files above budget but preserves active playba
   const cacheRoot = path.join(directory, "Library", "Caches", "com.fnnas.fnosbridge.mvp");
   const proxies = path.join(cacheRoot, "proxies");
   fs.mkdirSync(proxies, { recursive: true });
-  const active = path.join(proxies, "active.mp4"), unused = path.join(proxies, "unused.mp4");
+  const active = path.join(proxies, "a".repeat(40) + "-v3-720.mp4"), unused = path.join(proxies, "b".repeat(40) + "-v3-720.mp4");
   fs.writeFileSync(active, Buffer.alloc(60)); fs.writeFileSync(unused, Buffer.alloc(60));
   const service = media.create({ fs, path, os: { homedir: () => directory }, crypto, childProcess: {}, cacheSettings: { maxBytes: 100, targetBytes: 70, minimumFreeBytes: 0 } });
   service.retainCacheFile(active);
@@ -150,7 +152,7 @@ test("active playback exceeding cache budget blocks new output without deleting 
 test("stale nested still-cache work directories are cleaned without touching symlink targets", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lkfb-cache-stale-"));
   const cacheRoot = path.join(directory, "Library", "Caches", "com.fnnas.fnosbridge.mvp");
-  const work = path.join(cacheRoot, "stills", ".old-work");
+  const work = path.join(cacheRoot, "stills", "." + "a".repeat(40) + "-999999999-1");
   fs.mkdirSync(work, { recursive: true });
   fs.writeFileSync(path.join(work, "preview.png"), "old cache");
   const source = path.join(directory, "original.png"); fs.writeFileSync(source, "source");
@@ -165,7 +167,7 @@ test("stale nested still-cache work directories are cleaned without touching sym
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("successful cache writes are accounted and same-size same-mtime source replacement invalidates cache", async () => {
+test("successful cache writes are accounted and stable size/mtime survives inode replacement", async () => {
   const f = fixture({ autoComplete: true });
   try {
     const source = f.sources[0];
@@ -176,7 +178,7 @@ test("successful cache writes are accounted and same-size same-mtime source repl
     fs.renameSync(source + ".new", source);
     const second = await f.service.metadataFor(source);
     assert.equal(first.width, second.width);
-    assert.equal(f.calls.filter(call => call.binary.endsWith("ffprobe")).length, 2);
+    assert.equal(f.calls.filter(call => call.binary.endsWith("ffprobe")).length, 1);
     const output = await f.service.previewProxyFor(source, "720");
     assert.ok(f.service.cacheStats().bytes >= fs.statSync(output).size);
     assert.equal(f.service.cacheStats().reservedBytes, 0);

@@ -28,7 +28,7 @@ test('no decoded video frame triggers proxy; stale playback cannot revive itself
 
 test('closing card playback cancels its proxy and releases its cache lease',()=>{
   const calls=[]; const media={pause:()=>calls.push('pause'),removeAttribute:()=>{},load:()=>{},parentNode:null};
-  const context={selectionPreview:{media,assetId:'a',token:1,fallbackRequested:true,cachePath:'/cache/a'},assetForId:()=>({path:'/media/a'}),mediaTools:{cancelPreviewJob:p=>calls.push(p),releaseCacheFile:p=>calls.push(p)},clearTimeout:()=>{}};
+  const context={selectionPreview:{media,assetId:'a',token:1,fallbackRequested:true,cachePath:'/cache/a'},assetForId:()=>({path:'/media/a'}),mediaTools:{cancelPreviewJob:p=>calls.push(p),releaseCacheFile:p=>calls.push(p)},clearTimeout:()=>{},syncMediaActivity:()=>{}};
   vm.createContext(context);vm.runInContext(fn('stopSelectedVideoPreview'),context);context.stopSelectedVideoPreview();
   assert.deepEqual(calls,['/media/a','/cache/a','pause']);assert.equal(context.selectionPreview.media,null);assert.equal(context.selectionPreview.token,2);
 });

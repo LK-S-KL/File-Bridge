@@ -24,7 +24,10 @@
       viewMode: "card",
       cardStyle: "info",
       searchOpen: false,
-      colorManagementNoticeSeen: false
+      colorManagementNoticeSeen: false,
+      previewCacheRoot: "",
+      previewCacheMaxGiB: 12,
+      previewPerformance: "low"
     }
   };
 
@@ -111,6 +114,10 @@
       result.preferences.cardStyle = state.preferences.cardStyle === "clean" ? "clean" : "info";
       result.preferences.searchOpen = state.preferences.searchOpen === true;
       result.preferences.colorManagementNoticeSeen = state.preferences.colorManagementNoticeSeen === true;
+      result.preferences.previewCacheRoot = typeof state.preferences.previewCacheRoot === "string" ? state.preferences.previewCacheRoot.slice(0, 4096) : "";
+      var cacheMaxGiB = Number(state.preferences.previewCacheMaxGiB);
+      result.preferences.previewCacheMaxGiB = isFinite(cacheMaxGiB) ? Math.max(2, Math.min(128, cacheMaxGiB)) : 12;
+      result.preferences.previewPerformance = state.preferences.previewPerformance === "balanced" ? "balanced" : "low";
     }
     return result;
   }

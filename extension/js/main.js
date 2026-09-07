@@ -17,7 +17,7 @@
   var childProcess = nodeAvailable ? require("child_process") : null;
   var extensionRoot = nodeAvailable ? path.dirname(decodeURIComponent(window.location.pathname)) : "";
   var csInterface = typeof CSInterface === "function" ? new CSInterface() : null;
-  var mediaTools = nodeAvailable ? FnOSMediaTools.create({ fs: fs, path: path, os: os, crypto: crypto, childProcess: childProcess, extensionRoot: extensionRoot }) : null;
+  var mediaTools = null;
   var lutTools = nodeAvailable ? FnOSLutTools.create({ fs: fs, path: path }) : null;
   var stateStore = nodeAvailable ? FnOSStateStore.create({ fs: fs, path: path, os: os }) : null;
   var fileOps = nodeAvailable ? FnOSFileOps.create({ fs: fs, path: path, childProcess: childProcess }) : null;
@@ -25,6 +25,15 @@
   var projectPackager = nodeAvailable ? FnOSProjectPackager.create({ fs: fs, path: path, platform: process.platform }) : null;
   var pluginFolderOps = typeof FnOSPluginFolderOps === "object" ? FnOSPluginFolderOps : null;
   var persisted = stateStore ? stateStore.load() : FnOSStateStore.defaults();
+  var mediaStartupError = "";
+  if (nodeAvailable) {
+    try { mediaTools = createConfiguredMediaTools(persisted.preferences); }
+    catch (cacheError) {
+      mediaStartupError = "所选缓存目录不可用，已尝试使用本机默认目录；请重新选择缓存位置。";
+      try { mediaTools = createConfiguredMediaTools(Object.assign({}, persisted.preferences, { previewCacheRoot: "" })); }
+      catch (defaultCacheError) { mediaStartupError = "本机缓存目录不可用，请检查目录权限和磁盘空间。"; }
+    }
+  }
 
   var state = {
     hostId: "BROWSER",
@@ -90,6 +99,17 @@
   var lutSampleImagePromise = null;
   var previewQueue = [];
   var activePreviewJobs = 0;
+  var runningPreviewJobs = [];
+  var previewScrolling = false;
+  var previewScrollTimer = null;
+  var groupedAssets = { folders: [], files: [] };
+  var spriteHover = { token: 0, timer: null, card: null, asset: null };
+  var offlineJobs = null;
+  var offlineYieldPending = false;
+  var offlineUnsubscribe = null;
+  var offlineBusy = false;
+  var offlineCacheStats = null;
+  var offlineSettingsError = "";
   var renderGeneration = 0;
   var visualObserver = null;
   var virtualLayout = null;
@@ -126,6 +146,7 @@
       "loopButton", "volumeButton", "volumeRange", "screenshotButton", "qualityButton", "viewerQualityMenu", "speedButton", "viewerSpeedMenu", "viewerMarks", "lutViewer", "lutViewerTitle", "lutViewerSubtitle",
       "closeLutViewerButton", "lutCanvas", "lutDivider", "lutSplitRange", "lutOpacityRange", "lutCompareToggle", "lutSplitMode", "lutSliderMode", "installLutButton", "lutApplyStatus", "fileActionDialog", "dialogTitle",
       "dialogMessage", "renameField", "renameInput", "dialogCancelButton", "dialogConfirmButton"
+      , "prepareOfflineButton", "offlinePreviewPane", "offlineCloseButton", "offlineScope", "offlineMetadata", "offlinePoster", "offlineSprites", "offlineProxies", "offlineQuality", "offlinePin", "offlinePerformance", "offlineCacheRoot", "offlineChooseRootButton", "offlineBudget", "offlineEstimate", "offlineStatus", "offlineProgress", "offlineCounts", "offlineCurrentFile", "offlineError", "offlineStartButton", "offlinePauseButton", "offlineResumeButton", "offlineCancelButton", "offlineRetryButton", "offlineSettings", "offlineFailures"
     ].forEach(function (id) { elements[id] = byId(id); });
     elements.searchField = elements.inlineSearchField || (elements.toolbarSearchPopover ? elements.toolbarSearchPopover.querySelector(".search-field") : document.querySelector(".search-field"));
     elements.filterButtons = document.querySelectorAll(".filter-button");
@@ -532,6 +553,11 @@
     elements.assetGrid.addEventListener("dragleave", function (event) { var card = closestCard(event.target); if (card && (!event.relatedTarget || !card.contains(event.relatedTarget))) { card.classList.remove("is-drop-target"); } });
     elements.assetGrid.addEventListener("drop", handleLibraryDrop);
     elements.assetGrid.addEventListener("scroll", function () {
+      previewScrolling = true;
+      stopSpriteHover();
+      clearTimeout(previewScrollTimer);
+      syncMediaActivity();
+      previewScrollTimer = setTimeout(function () { previewScrolling = false; syncMediaActivity(); pumpPreviewQueue(); }, 160);
       if (!virtualLayout || virtualRenderFrame) { return; }
       virtualRenderFrame = requestAnimationFrame(function () { virtualRenderFrame = 0; renderAssets(true); });
     });
@@ -608,6 +634,10 @@
       if (!elements.contextMenu.contains(event.target)) { closeContextMenu(); }
     });
     document.addEventListener("keydown", function (event) {
+      if (elements.offlinePreviewPane && !elements.offlinePreviewPane.hidden) {
+        if (event.key === "Escape") { event.preventDefault(); closeOfflinePreview(); }
+        return;
+      }
       var editing = /^(INPUT|TEXTAREA|SELECT)$/.test(event.target && event.target.tagName || "") || !!(event.target && event.target.isContentEditable);
       var shortcut = (event.metaKey || event.ctrlKey) && !event.altKey ? String(event.key || "").toLowerCase() : "";
       if (event.key === "Alt") { altPressed = true; }
@@ -636,7 +666,7 @@
     });
     document.addEventListener("keydown", function (event) {
       var asset;
-      if ((event.key !== " " && event.code !== "Space") || !elements.viewer.hidden || !elements.lutViewer.hidden || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(event.target && event.target.tagName || "")) { return; }
+      if ((elements.offlinePreviewPane && !elements.offlinePreviewPane.hidden) || (event.key !== " " && event.code !== "Space") || !elements.viewer.hidden || !elements.lutViewer.hidden || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(event.target && event.target.tagName || "")) { return; }
       asset = selectedAsset();
       if (asset) { event.preventDefault(); if (asset.type === "folder") { enterFolderScope(asset); } else { openViewer(asset); } }
     });
@@ -650,6 +680,8 @@
       if (state.activeScanSignal) { state.activeScanSignal.cancelled = true; }
       if (packageOperation) { packageOperation.cancelled = true; }
       stopAudioHover(); stopSelectedVideoPreview(); closeViewer();
+      stopSpriteHover(); clearTimeout(previewScrollTimer);
+      if (offlineJobs) { offlineJobs.dispose().catch(function () {}); }
       if (preferenceTimer) { clearTimeout(preferenceTimer); persistPreferences(); }
     });
   }
@@ -1431,8 +1463,12 @@
   function renderAssets(windowOnly) {
     var fragment = document.createDocumentFragment();
     var renderList = state.visibleAssets;
-    var folderAssets = renderList.filter(function (asset) { return asset.type === "plugin-folder"; });
-    var fileAssets = renderList.filter(function (asset) { return asset.type !== "plugin-folder"; });
+    if (!windowOnly) {
+      groupedAssets.folders = renderList.filter(function (asset) { return asset.type === "plugin-folder"; });
+      groupedAssets.files = renderList.filter(function (asset) { return asset.type !== "plugin-folder"; });
+    }
+    var folderAssets = groupedAssets.folders;
+    var fileAssets = groupedAssets.files;
     var effectiveClean = state.preferences.viewMode !== "list" && state.preferences.cardStyle === "clean";
     var selectedVisible = false;
     var visuals = [];
@@ -1476,7 +1512,6 @@
     }
     if (!windowOnly || !placements[selectionPreview.assetId]) { stopSelectedVideoPreview(); }
     renderGeneration += 1;
-    previewQueue = [];
     if (visualObserver) { visualObserver.disconnect(); visualObserver = null; }
     if (typeof IntersectionObserver === "function") {
       visualObserver = new IntersectionObserver(function (entries) {
@@ -1484,7 +1519,7 @@
           var task = entry.target.__fnosVisualTask;
           if (!entry.isIntersecting || !task) { return; }
           visualObserver.unobserve(entry.target); delete entry.target.__fnosVisualTask;
-          enqueuePreview(function () { return generateVisual(task.asset, entry.target, task.generation); });
+          startVisualRequest(task.asset, entry.target, task.generation);
         });
       }, { root: elements.assetGrid, rootMargin: "220px" });
     }
@@ -1508,8 +1543,10 @@
       if (previousCards[asset.domId]) {
         var reused = previousCards[asset.domId]; fragment.appendChild(reused);
         var reusedThumb = reused.querySelector(".asset-thumb");
-        if (asset.type === "plugin-folder" && reusedThumb.querySelector(".folder-collage-tile:not(.has-image)")) {
-          var collage = reusedThumb.querySelector(".folder-collage"); collage.innerHTML = ""; renderPluginFolderPreview(asset, collage, renderGeneration);
+        if (asset.type === "plugin-folder") {
+          Array.prototype.forEach.call(reusedThumb.querySelectorAll(".folder-collage-tile"), function (tile) {
+            if (tile.__fnosVisualAsset && !tile.querySelector("img")) { visuals.push({ asset: tile.__fnosVisualAsset, thumb: tile, generation: renderGeneration }); }
+          });
         }
         if (asset.type !== "plugin-folder" && !reusedThumb.querySelector("img")) { visuals.push({ asset: asset, thumb: reusedThumb, generation: renderGeneration }); }
         return;
@@ -1587,6 +1624,7 @@
       if (asset.type !== "plugin-folder") { visuals.push({ asset: asset, thumb: thumb, generation: renderGeneration }); }
     });
     elements.assetGrid.appendChild(fragment);
+    cancelInvisiblePreviews();
     visuals.forEach(function (item, index) { requestVisual(item.asset, item.thumb, index, item.generation); });
     if (!selectedVisible && state.selectedId && !state.selectedIds[state.selectedId]) { state.selectedId = null; }
     syncSelectAllButton();
@@ -1636,14 +1674,16 @@
 
   function folderPreviewAssets(asset) {
     var keys = pluginFolderAssetKeys(asset && asset.pluginFolderId);
-    return state.assets.filter(function (item) { return keys.indexOf(normalizeAssetKey(item.path)) !== -1 && !item.offline; });
+    var wanted = Object.create(null);
+    keys.forEach(function (key) { wanted[normalizeAssetKey(key)] = true; });
+    return state.assets.filter(function (item) { return wanted[normalizeAssetKey(item.path)]; });
   }
 
   function setFolderTileImage(tile, filePath, asset, generation) {
     var image = document.createElement("img");
-    if (generation !== renderGeneration) { return; }
+    if (!tile.parentNode) { return; }
     image.alt = asset.name; image.draggable = false;
-    image.onload = function () { if (generation === renderGeneration && tile.parentNode) { tile.classList.add("has-image"); } };
+    image.onload = function () { if (tile.parentNode) { tile.classList.add("has-image"); } };
     image.onerror = function () { image.remove(); };
     image.src = SeekLibrary.fileUrl(filePath);
     tile.appendChild(image);
@@ -1651,7 +1691,6 @@
 
   function renderPluginFolderPreview(asset, container, generation) {
     var candidates = folderPreviewAssets(asset).slice(0, 4);
-    var directImages = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "svg"];
     if (!candidates.length) {
       container.classList.add("is-empty");
       container.innerHTML = '<span class="folder-empty-icon" aria-hidden="true"><span class="icon-folder-large"></span></span>';
@@ -1660,73 +1699,130 @@
     container.setAttribute("data-count", String(candidates.length));
     candidates.forEach(function (item) {
       var tile = document.createElement("span");
-      var sourcePromise;
       tile.className = "folder-collage-tile";
       tile.textContent = String(item.extension || item.type || "").toUpperCase();
       container.appendChild(tile);
-      if (directImages.indexOf(item.extension) !== -1) {
-        setFolderTileImage(tile, item.path, item, generation);
-      } else if (mediaTools && item.type === "video") {
-        sourcePromise = mediaTools.posterFor(item.path);
-        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
-      } else if (mediaTools && item.type === "image") {
-        sourcePromise = mediaTools.previewStillFor(item.path);
-        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
-      } else if (mediaTools && item.type === "audio") {
-        sourcePromise = mediaTools.waveformFor(item.path);
-        sourcePromise.then(function (filePath) { setFolderTileImage(tile, filePath, item, generation); }).catch(function () {});
-      }
+      requestVisual(item, tile, 0, generation);
     });
   }
 
   function requestVisual(asset, thumb, index, generation) {
+    thumb.__fnosVisualAsset = asset;
+    if (thumb.__fnosVisualPending) { return; }
     if (visualObserver) {
       thumb.__fnosVisualTask = { asset: asset, generation: generation };
       visualObserver.observe(thumb);
     } else if (index < 120) {
-      enqueuePreview(function () { return generateVisual(asset, thumb, generation); });
+      Promise.resolve().then(function () { startVisualRequest(asset, thumb, generation); });
     }
   }
 
-  function enqueuePreview(job) {
-    previewQueue.push(job);
+  function cachedPreview(asset, kind, variant) {
+    if (!mediaTools || !mediaTools.cachedPreviewFor) { return Promise.resolve(null); }
+    if (kind === "proxy" && !variant) {
+      return ["540", "720", "1080"].reduce(function (chain, quality) { return chain.then(function (record) { return record || mediaTools.cachedPreviewFor(asset.path, kind, quality); }); }, Promise.resolve(null)).catch(function () { return null; });
+    }
+    return mediaTools.cachedPreviewFor(asset.path, kind, variant).catch(function () { return null; });
+  }
+
+  function installAssetVisual(asset, thumb, filePath, generation, cached) {
+    if (!document.documentElement.contains(thumb)) { return; }
+    if (thumb.classList.contains("folder-collage-tile")) { setFolderTileImage(thumb, filePath, asset, generation); }
+    else { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, asset.type === "audio" ? "waveform-image" : "poster-image", asset); }
+    if (cached && asset.offline) {
+      var card = thumb.closest(".asset-card");
+      var badge = card && card.querySelector(".offline-badge");
+      if (card && !badge) { badge = document.createElement("span"); badge.className = "offline-badge"; thumb.appendChild(badge); card.classList.add("is-offline"); card.draggable = false; }
+      if (card) { card.classList.add("has-cached-preview"); }
+      if (badge) { badge.textContent = "缓存预览"; }
+    }
+  }
+
+  function startVisualRequest(asset, thumb, generation) {
+    if (thumb.__fnosVisualPending || !document.documentElement.contains(thumb)) { return; }
+    thumb.__fnosVisualPending = true;
+    cachedPreview(asset, "poster").then(function (record) {
+      if (!document.documentElement.contains(thumb)) { thumb.__fnosVisualPending = false; return; }
+      if (record && record.path) {
+        if (record.offline) { asset.offline = true; }
+        installAssetVisual(asset, thumb, record.path, generation, true);
+        thumb.__fnosVisualPending = false;
+        cachedPreview(asset, "metadata").then(function (cached) {
+          if (cached && cached.metadata && document.documentElement.contains(thumb)) { asset.mediaMetadata = cached.metadata; updateCardMediaBadge(asset, thumb); }
+        });
+        return;
+      }
+      if (asset.offline) { thumb.__fnosVisualPending = false; return; }
+      if (asset.type === "image" && ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "svg"].indexOf(asset.extension) !== -1) {
+        installAssetVisual(asset, thumb, asset.path, generation, false); thumb.__fnosVisualPending = false; return;
+      }
+      enqueuePreview(function () { return generateVisual(asset, thumb, generation); }, asset, thumb);
+    });
+  }
+
+  function enqueuePreview(run, asset, target) {
+    previewQueue.push({ run: run, asset: asset, target: target, released: false });
     pumpPreviewQueue();
   }
 
   function pumpPreviewQueue() {
     var job;
     var promise;
-    while (activePreviewJobs < 2 && previewQueue.length) {
+    if (previewScrolling || document.hidden) { return; }
+    while (activePreviewJobs < 1 && previewQueue.length) {
       job = previewQueue.shift();
+      if (job.target && !document.documentElement.contains(job.target)) { job.target.__fnosVisualPending = false; continue; }
       activePreviewJobs += 1;
-      try { promise = Promise.resolve(job()); }
+      runningPreviewJobs.push(job);
+      try { promise = Promise.resolve(job.run()); }
       catch (error) { promise = Promise.reject(error); }
-      promise.then(previewJobDone, previewJobDone);
+      (function (current) { promise.then(function () { previewJobDone(current); }, function () { previewJobDone(current); }); }(job));
     }
   }
 
-  function previewJobDone() {
+  function previewJobDone(job) {
+    if (job.released) { return; }
+    job.released = true;
+    if (job.target) { job.target.__fnosVisualPending = false; }
+    runningPreviewJobs = runningPreviewJobs.filter(function (item) { return item !== job; });
     activePreviewJobs = Math.max(0, activePreviewJobs - 1);
+    pumpPreviewQueue();
+  }
+
+  function cancelInvisiblePreviews() {
+    var cancelledPaths = Object.create(null);
+    previewQueue = previewQueue.filter(function (job) {
+      if (!job.target || document.documentElement.contains(job.target)) { return true; }
+      job.target.__fnosVisualPending = false; return false;
+    });
+    runningPreviewJobs.slice().forEach(function (job) {
+      if (job.target && !document.documentElement.contains(job.target)) { cancelledPaths[job.asset.path] = true; previewJobDone(job); }
+    });
+    Object.keys(cancelledPaths).forEach(function (filePath) {
+      if (runningPreviewJobs.concat(previewQueue).some(function (job) { return job.asset && job.asset.path === filePath; })) { return; }
+      if (mediaTools && mediaTools.cancelBackgroundFor) { mediaTools.cancelBackgroundFor(filePath); }
+    });
+    if (spriteHover.card && !document.documentElement.contains(spriteHover.card)) { stopSpriteHover(); }
     pumpPreviewQueue();
   }
 
   function generateVisual(asset, thumb, generation) {
     var directImages = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "svg"];
     var visualPromise = Promise.resolve();
-    if (generation !== renderGeneration || !document.documentElement.contains(thumb) || asset.offline) { return visualPromise; }
+    if (!document.documentElement.contains(thumb) || asset.offline) { return visualPromise; }
     if (asset.type === "image" && directImages.indexOf(asset.extension) !== -1) {
       installImage(thumb, SeekLibrary.fileUrl(asset.path), asset.name, "poster-image", asset);
     } else if (mediaTools && asset.type === "image" && ["psd", "psb", "ai", "eps"].indexOf(asset.extension) !== -1) {
-      visualPromise = mediaTools.previewStillFor(asset.path).then(function (filePath) { if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, "poster-image", asset); } });
+      visualPromise = mediaTools.previewStillFor(asset.path).then(function (filePath) { installAssetVisual(asset, thumb, filePath, generation); });
     } else if (mediaTools && asset.type === "video") {
-      visualPromise = mediaTools.posterFor(asset.path).then(function (filePath) { if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, "poster-image", asset); } });
+      visualPromise = mediaTools.posterFor(asset.path).then(function (filePath) { installAssetVisual(asset, thumb, filePath, generation); });
     } else if (mediaTools && asset.type === "audio") {
-      visualPromise = mediaTools.waveformFor(asset.path).then(function (filePath) { if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, SeekLibrary.fileUrl(filePath), asset.name, "waveform-image", asset); } });
+      visualPromise = mediaTools.waveformFor(asset.path).then(function (filePath) { installAssetVisual(asset, thumb, filePath, generation); });
     } else if (asset.type === "lut") {
       visualPromise = renderLutThumbnail(asset, thumb, generation);
     }
     return visualPromise.catch(function () {}).then(function () {
-      if (!mediaTools || asset.type === "lut" || asset.type === "folder" || generation !== renderGeneration) { return; }
+      if (!mediaTools || asset.type === "lut" || asset.type === "folder" || !document.documentElement.contains(thumb) || previewScrolling) { return; }
       return mediaTools.metadataFor(asset.path).then(function (metadata) {
         asset.mediaMetadata = metadata;
         updateCardMediaBadge(asset, thumb);
@@ -1778,21 +1874,47 @@
     var thumb;
     var sprite;
     if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) { return; }
+    stopSpriteHover();
     asset = assetForId(card.getAttribute("data-asset-id"));
     if (asset && asset.type === "audio") { beginAudioHover(asset); return; }
-    if (!asset || asset.type !== "video" || !mediaTools) { return; }
+    if (!asset || asset.type !== "video" || !mediaTools || previewScrolling) { return; }
     thumb = card.querySelector(".asset-thumb");
     sprite = thumb.querySelector(".sprite-preview");
-    if (sprite.getAttribute("data-ready") === "true") { thumb.classList.add("is-scrubbing"); return; }
-    if (sprite.getAttribute("data-loading") === "true") { return; }
-    sprite.setAttribute("data-loading", "true");
-    mediaTools.spriteFor(asset.path).then(function (result) {
-      if (!document.documentElement.contains(sprite)) { return; }
-      sprite.style.backgroundImage = 'url("' + SeekLibrary.fileUrl(result.path) + '")';
-      sprite.setAttribute("data-ready", "true");
-      sprite.removeAttribute("data-loading");
-      thumb.classList.add("is-scrubbing");
-    }).catch(function () { sprite.removeAttribute("data-loading"); });
+    spriteHover.card = card; spriteHover.asset = asset;
+    var token = spriteHover.token;
+    spriteHover.timer = setTimeout(function () {
+      if (token !== spriteHover.token || previewScrolling || spriteHover.card !== card) { return; }
+      spriteHover.timer = null;
+      if (sprite.getAttribute("data-ready") === "true") { thumb.classList.add("is-scrubbing"); return; }
+      sprite.setAttribute("data-loading", "true");
+      cachedPreview(asset, "sprite").then(function (cached) {
+        if (token !== spriteHover.token || previewScrolling || !document.documentElement.contains(sprite)) { return null; }
+        if (cached) { return cached; }
+        if (asset.offline) { return null; }
+        return mediaTools.spriteFor(asset.path, { purpose: "hover" });
+      }).then(function (result) {
+        if (token !== spriteHover.token || spriteHover.card !== card || previewScrolling || !document.documentElement.contains(sprite)) { return; }
+        sprite.removeAttribute("data-loading");
+        if (!result || !result.path) { return; }
+        sprite.style.backgroundImage = 'url("' + SeekLibrary.fileUrl(result.path) + '")';
+        sprite.__sampleTimes = result.sampleTimes || [];
+        sprite.setAttribute("data-ready", "true");
+        thumb.classList.add("is-scrubbing");
+      }).catch(function () { sprite.removeAttribute("data-loading"); });
+    }, 300);
+  }
+
+  function stopSpriteHover() {
+    var previous = spriteHover.asset;
+    var card = spriteHover.card;
+    clearTimeout(spriteHover.timer);
+    spriteHover.timer = null; spriteHover.card = null; spriteHover.asset = null; spriteHover.token += 1;
+    if (card) {
+      card.querySelector(".asset-thumb").classList.remove("is-scrubbing");
+      var sprite = card.querySelector(".sprite-preview");
+      if (sprite) { sprite.removeAttribute("data-loading"); }
+    }
+    if (previous && mediaTools && mediaTools.cancelBackgroundFor && !runningPreviewJobs.some(function (job) { return job.asset && job.asset.path === previous.path; })) { mediaTools.cancelBackgroundFor(previous.path); }
   }
 
   function scrubSpritePreview(event) {
@@ -1809,9 +1931,16 @@
     asset = assetForId(card.getAttribute("data-asset-id"));
     if (!asset || asset.type !== "video") { return; }
     thumb = card.querySelector(".asset-thumb"); sprite = thumb.querySelector(".sprite-preview");
-    if (sprite.getAttribute("data-ready") !== "true") { return; }
+    if (sprite.getAttribute("data-ready") !== "true" || spriteHover.card !== card || spriteHover.timer || previewScrolling) { return; }
     rect = thumb.getBoundingClientRect(); ratio = Math.max(0, Math.min(.999, (event.clientX - rect.left) / rect.width));
     frame = Math.floor(ratio * FnOSMediaTools.SPRITE_FRAMES); column = frame % FnOSMediaTools.SPRITE_COLUMNS; row = Math.floor(frame / FnOSMediaTools.SPRITE_COLUMNS);
+    if (sprite.__sampleTimes && sprite.__sampleTimes.length) {
+      var times = sprite.__sampleTimes;
+      var targetTime = ratio * (Number(asset.mediaMetadata && asset.mediaMetadata.duration) || times[times.length - 1]);
+      frame = 0;
+      while (frame + 1 < times.length && targetTime > (times[frame] + times[frame + 1]) / 2) { frame += 1; }
+      column = frame % FnOSMediaTools.SPRITE_COLUMNS; row = Math.floor(frame / FnOSMediaTools.SPRITE_COLUMNS);
+    }
     sprite.style.backgroundPosition = (column / (FnOSMediaTools.SPRITE_COLUMNS - 1) * 100) + "% " + (row / (FnOSMediaTools.SPRITE_ROWS - 1) * 100) + "%";
     thumb.style.setProperty("--scrub-progress", Math.round(ratio * 100) + "%"); thumb.classList.add("is-scrubbing");
   }
@@ -1819,7 +1948,7 @@
   function endSpritePreview(event) {
     var card = closestCard(event.target);
     if (!card || (event.relatedTarget && card.contains(event.relatedTarget))) { return; }
-    card.querySelector(".asset-thumb").classList.remove("is-scrubbing");
+    stopSpriteHover();
     stopAudioHover();
   }
 
@@ -1832,6 +1961,7 @@
       if (audioHover.assetId !== asset.domId) { return; }
       media = new Audio(SeekLibrary.fileUrl(asset.path)); media.preload = "auto"; media.volume = .72;
       audioHover.media = media;
+      media.addEventListener("play", syncMediaActivity); media.addEventListener("pause", syncMediaActivity); media.addEventListener("ended", syncMediaActivity);
       media.addEventListener("error", function () {
         if (!mediaTools || audioHover.media !== media || media.getAttribute("data-proxy")) { return; }
         media.setAttribute("data-proxy", "true");
@@ -1856,13 +1986,21 @@
     selectionPreview.media = null;
     selectionPreview.assetId = null;
     selectionPreview.fallbackRequested = false;
+    syncMediaActivity();
     if (!media) { return; }
     try { media.pause(); media.removeAttribute("src"); media.load(); } catch (error) {}
     if (media.parentNode) { media.parentNode.classList.remove("is-selection-preview"); media.parentNode.removeChild(media); }
   }
 
   function selectedPreviewProfile(asset) {
-    return asset && asset.mediaMetadata && Number(asset.mediaMetadata.height) >= 1800 ? "1080" : "720";
+    return state.preferences.previewPerformance === "balanced" ? "720" : "540";
+  }
+
+  function selectedPreviewNeedsProxy(asset) {
+    var meta = asset && asset.mediaMetadata;
+    return state.preferences.previewPerformance !== "balanced" && meta &&
+      (Number(meta.width) >= 2560 || Number(meta.height) >= 1440 || Number(meta.frameRate) > 40 ||
+       Number(meta.totalBitrate) >= 50000000 || /^(hevc|prores|dnxhd)$/.test(meta.videoCodecShort || ""));
   }
 
   function armSelectedVideoFrameWatchdog(asset, media, token, proxySource) {
@@ -1878,6 +2016,7 @@
     var profile;
     if (token !== selectionPreview.token || media !== selectionPreview.media || selectionPreview.fallbackRequested) { return; }
     selectionPreview.fallbackRequested = true;
+    pauseOfflineForPreview();
     if (!mediaTools) {
       stopSelectedVideoPreview();
       return;
@@ -1909,7 +2048,7 @@
     var token;
     stopAudioHover();
     stopSelectedVideoPreview();
-    if (!asset || asset.type !== "video" || asset.offline || !asset.path) { return; }
+    if (!asset || asset.type !== "video" || !asset.path) { return; }
     card = findCard(asset.domId);
     thumb = card && card.querySelector(".asset-thumb");
     if (!thumb) { return; }
@@ -1941,7 +2080,9 @@
     });
     media.addEventListener("play", function () {
       if (token === selectionPreview.token && media === selectionPreview.media) { media.setAttribute("data-preview-started", "true"); }
+      syncMediaActivity();
     });
+    media.addEventListener("pause", syncMediaActivity);
     media.addEventListener("canplay", function () {
       if (token !== selectionPreview.token || media !== selectionPreview.media || media.getAttribute("data-preview-started") === "true") { return; }
       safePlay(media);
@@ -1954,16 +2095,31 @@
     media.addEventListener("ended", function () {
       if (token === selectionPreview.token && media === selectionPreview.media) { media.removeAttribute("data-preview-started"); }
     });
-    media.src = SeekLibrary.fileUrl(asset.path);
-    media.load();
-    armSelectedVideoFrameWatchdog(asset, media, token, false);
-    safePlay(media);
+    cachedPreview(asset, "proxy").then(function (cached) {
+      if (token !== selectionPreview.token || media !== selectionPreview.media) { return; }
+      if (cached && cached.offline) { asset.offline = true; }
+      if (!cached && asset.offline) { stopSelectedVideoPreview(); return; }
+      if (!cached && selectedPreviewNeedsProxy(asset)) {
+        showNotice("正在准备低占用播放代理，完成后从头播放。", false, 4000);
+        fallbackSelectedVideoPreview(asset, media, token);
+        return;
+      }
+      if (cached && cached.path) {
+        mediaTools.retainCacheFile(cached.path); selectionPreview.cachePath = cached.path;
+        media.setAttribute("data-preview-source", "proxy");
+      }
+      media.src = SeekLibrary.fileUrl(cached && cached.path || asset.path);
+      media.load();
+      armSelectedVideoFrameWatchdog(asset, media, token, !!cached);
+      safePlay(media);
+    });
   }
 
   function stopAudioHover() {
     if (audioHover.cachePath && mediaTools) { mediaTools.releaseCacheFile(audioHover.cachePath); audioHover.cachePath = ""; }
     clearTimeout(audioHover.timer); audioHover.timer = null; audioHover.assetId = null;
     if (audioHover.media) { try { audioHover.media.pause(); audioHover.media.removeAttribute("src"); audioHover.media.load(); } catch (error) {} audioHover.media = null; }
+    syncMediaActivity();
   }
 
   function selectedAssets() {
@@ -2451,9 +2607,10 @@
     stopAudioHover();
     stopSelectedVideoPreview();
     if (!asset) { return; }
-    if (asset.offline) { showNotice("素材当前离线；重新连接原 SMB 路径后可恢复预览。", true, 5000); return; }
+    if (asset.offline && ["video", "image"].indexOf(asset.type) === -1) { showNotice("素材当前离线，可查看已缓存的静态预览。", true, 5000); return; }
     if (asset.type === "lut") { openLutViewer(asset); return; }
     closeViewer();
+    pauseOfflineForPreview();
     if (mediaTools) { mediaTools.prioritizeViewer(); }
     state.selectedId = asset.domId;
     viewerState.asset = asset;
@@ -2493,14 +2650,14 @@
     updateViewerMarks();
     if (asset.type === "video") {
       media = document.createElement("video");
-      media.controls = false; media.preload = "auto"; media.playsInline = true; media.volume = .72; media.muted = false; media.draggable = state.hostId === "PPRO";
-      media.setAttribute("draggable", state.hostId === "PPRO" ? "true" : "false");
+      media.controls = false; media.preload = "auto"; media.playsInline = true; media.volume = .72; media.muted = false; media.draggable = state.hostId === "PPRO" && !asset.offline;
+      media.setAttribute("draggable", media.draggable ? "true" : "false");
       media.addEventListener("click", toggleViewerPlayback);
       elements.viewerMediaLayer.appendChild(media);
       viewerState.media = media;
       bindViewerMedia(media);
       loadViewerProfile("auto", false);
-      if (mediaTools && state.hostId === "PPRO") {
+      if (mediaTools && state.hostId === "PPRO" && !asset.offline) {
         viewerState.audioProxyStatus = "preparing";
         mediaTools.audioProxyFor(asset.path).then(function (audioPath) {
           if (viewerState.loadToken >= token && viewerState.asset === asset) { mediaTools.retainCacheFile(audioPath); viewerState.audioProxyPath = audioPath; viewerState.audioProxyStatus = "ready"; }
@@ -2514,17 +2671,24 @@
       safePlay(media);
       if (mediaTools) { mediaTools.waveformFor(asset.path).then(function (filePath) { var image; if (viewerState.asset !== asset || !document.documentElement.contains(waveform)) { return; } image = document.createElement("img"); image.src = SeekLibrary.fileUrl(filePath); image.alt = asset.name + " 波形"; image.draggable = false; waveform.replaceWith(image); }).catch(function () { if (document.documentElement.contains(waveform)) { waveform.textContent = "无法生成波形"; } }); }
     } else {
-      media = document.createElement("img"); media.alt = asset.name; media.draggable = state.hostId === "PPRO"; media.setAttribute("draggable", state.hostId === "PPRO" ? "true" : "false");
+      media = document.createElement("img"); media.alt = asset.name; media.draggable = state.hostId === "PPRO" && !asset.offline; media.setAttribute("draggable", media.draggable ? "true" : "false");
       media.addEventListener("load", function () { if (viewerState.asset === asset) { elements.viewerSubtitle.textContent = media.naturalWidth + " × " + media.naturalHeight + " · " + String(asset.extension || "图片").toUpperCase() + " · " + SeekLibrary.formatBytes(asset.size); } });
       elements.viewerMediaLayer.appendChild(media);
-      if (mediaTools && ["psd", "psb", "ai", "eps"].indexOf(asset.extension) !== -1) {
+      if (asset.offline) {
+        cachedPreview(asset, "poster").then(function (record) {
+          if (viewerState.asset !== asset) { return; }
+          if (record && record.path) { media.src = SeekLibrary.fileUrl(record.path); elements.viewerSubtitle.textContent = "缓存预览 · 原始素材离线"; }
+          else { elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "此素材没有可用的本地预览。"; }
+        });
+      } else if (mediaTools && ["psd", "psb", "ai", "eps"].indexOf(asset.extension) !== -1) {
         elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "正在生成设计文件预览…";
         mediaTools.previewStillFor(asset.path).then(function (previewPath) { if (viewerState.asset === asset) { media.src = SeekLibrary.fileUrl(previewPath); elements.viewerBusy.hidden = true; } }).catch(function (error) { elements.viewerBusy.hidden = true; showNotice("无法预览该设计文件：" + friendlyError(error), true, 5500); });
       } else { media.src = SeekLibrary.fileUrl(asset.path); }
       viewerState.media = media;
     }
     if (mediaTools && asset.type !== "image") {
-      mediaTools.metadataFor(asset.path).then(function (metadata) {
+      (asset.offline ? cachedPreview(asset, "metadata").then(function (record) { return record && record.metadata; }) : mediaTools.metadataFor(asset.path)).then(function (metadata) {
+        if (!metadata) { return; }
         if (viewerState.asset !== asset) { return; }
         asset.mediaMetadata = metadata; viewerState.metadata = metadata;
         var noAudio = metadata.audioCodecShort === "无" || metadata.audioCodecShort === "none";
@@ -2546,6 +2710,7 @@
     elements.viewerMediaLayer.innerHTML = ""; elements.viewer.hidden = true; elements.viewerBusy.hidden = true;
     closeViewerMenus();
     viewerState.asset = null; viewerState.media = null; viewerState.metadata = null; viewerState.audioProxyPath = ""; viewerState.audioProxyStatus = "idle";
+    syncMediaActivity();
   }
 
   function bindViewerMedia(media) {
@@ -2556,11 +2721,11 @@
     });
     media.addEventListener("canplay", function () { if (media === viewerState.media && (media.tagName !== "VIDEO" || media.videoWidth > 0)) {
       viewerState.sourcePlayable = true;
-      elements.screenshotButton.disabled = state.hostId !== "PPRO" || media.tagName !== "VIDEO";
+      elements.screenshotButton.disabled = state.hostId !== "PPRO" || media.tagName !== "VIDEO" || !!(viewerState.asset && viewerState.asset.offline);
       elements.screenshotButton.setAttribute("aria-disabled", elements.screenshotButton.disabled ? "true" : "false");
     } });
-    media.addEventListener("play", function () { setViewerPlayState(true); startViewerClock(); });
-    media.addEventListener("pause", function () { setViewerPlayState(false); updateViewerTimeline(); });
+    media.addEventListener("play", function () { setViewerPlayState(true); startViewerClock(); syncMediaActivity(); });
+    media.addEventListener("pause", function () { setViewerPlayState(false); updateViewerTimeline(); syncMediaActivity(); });
     media.addEventListener("timeupdate", updateViewerTimeline);
     media.addEventListener("ended", function () {
       if (viewerState.loop && viewerState.media === media) { media.currentTime = viewerState.inPoint; safePlay(media); }
@@ -2683,13 +2848,26 @@
     setViewerQualityLabel(profile);
     token = ++viewerState.loadToken;
     clearTimeout(viewerState.autoTimer); viewerState.autoTimer = null;
+    if (asset.offline && profile !== "auto") { elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "原始素材离线，请使用自动缓存预览。"; return; }
     if (profile === "source") {
       elements.viewerBusy.hidden = true; switchViewerSource(asset.path, currentTime, wasPlaying); return;
     }
     if (profile === "auto") {
       viewerState.sourcePlayable = false; viewerState.autoProxyReady = ""; viewerState.autoKeepSource = false;
+      cachedPreview(asset, "proxy").then(function (record) {
+        if (token !== viewerState.loadToken || media !== viewerState.media) { return; }
+        if (record && record.path) {
+          if (record.offline) { asset.offline = true; media.draggable = false; }
+          viewerState.autoProxyReady = record.path; viewerState.autoKeepSource = true;
+          elements.viewerBusy.hidden = true; switchViewerSource(record.path, currentTime, wasPlaying); return;
+        }
+        if (asset.offline) {
+          elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "原始素材离线，此视频没有本地播放代理。";
+          cachedPreview(asset, "poster").then(function (poster) { if (poster && viewerState.media === media) { media.poster = SeekLibrary.fileUrl(poster.path); } });
+          return;
+        }
       switchViewerSource(asset.path, currentTime, wasPlaying);
-      targetProfile = viewerState.metadata && Number(viewerState.metadata.height) >= 1800 ? "1080" : "720";
+      targetProfile = selectedPreviewProfile(asset);
       viewerState.autoTimer = setTimeout(function () {
         viewerState.autoKeepSource = viewerState.sourcePlayable; elements.viewerBusy.hidden = true;
         if (viewerState.autoKeepSource && mediaTools) { mediaTools.cancelPreviewJob(asset.path); }
@@ -2705,6 +2883,7 @@
         if (!viewerState.sourcePlayable) { elements.viewerBusy.textContent = "预览暂不可用：" + friendlyError(error); }
         if (/^CACHE_/.test(error && (error.code || error.message) || "")) { showNotice(friendlyError(error), true, 6000); }
       } });
+      });
       return;
     }
     elements.viewerBusy.hidden = false; elements.viewerBusy.textContent = "正在生成 " + profile + "p 播放代理…";
@@ -2925,7 +3104,7 @@
   function startViewerDrag(event) {
     var asset = viewerState.asset;
     var result;
-    if (state.hostId !== "PPRO" || !asset || asset.type === "lut") { event.preventDefault(); return; }
+    if (state.hostId !== "PPRO" || !asset || asset.type === "lut" || asset.offline) { event.preventDefault(); return; }
     result = FnOSInteractionTools.viewerDragPath(asset, event.altKey || altPressed, viewerState.audioProxyPath);
     if (!result.ok) { event.preventDefault(); showNotice(viewerState.audioProxyStatus === "unavailable" ? "该视频没有可用音轨，无法仅拖入音频。" : "仅音频副本仍在准备，请稍后再按住 Alt 拖动。", viewerState.audioProxyStatus === "unavailable", 4000); return; }
     populateAdobeDragData(event, result.path);
@@ -2934,7 +3113,7 @@
   function captureViewerFrame() {
     var asset = viewerState.asset;
     var media = viewerState.media;
-    if (state.hostId !== "PPRO" || !asset || asset.type !== "video" || !mediaTools) { return; }
+    if (state.hostId !== "PPRO" || !asset || asset.type !== "video" || !mediaTools || asset.offline) { return; }
     elements.screenshotButton.disabled = true;
     showNotice("正在从原始视频生成当前帧…", false, 0);
     mediaTools.captureFrameForProject(asset.path, media.currentTime).then(function (filePath) {
@@ -3005,10 +3184,10 @@
       return promise.then(function (lut) {
         var processed = lut ? FnOSLutTools.applyToImageData(sample.data, lut, { opacity: 1 }) : sample.data;
         context.putImageData(processed, 0, 0);
-        if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, sample.canvas.toDataURL("image/jpeg", .86), asset.name, "poster-image", asset); }
+        if (document.documentElement.contains(thumb)) { installImage(thumb, sample.canvas.toDataURL("image/jpeg", .86), asset.name, "poster-image", asset); }
       }).catch(function () {
         context.putImageData(sample.data, 0, 0);
-        if (generation === renderGeneration && document.documentElement.contains(thumb)) { installImage(thumb, sample.canvas.toDataURL("image/jpeg", .82), asset.name, "poster-image", asset); }
+        if (document.documentElement.contains(thumb)) { installImage(thumb, sample.canvas.toDataURL("image/jpeg", .82), asset.name, "poster-image", asset); }
       });
     });
   }
@@ -3429,6 +3608,7 @@
   function runHostActionForAssets(assets, placeAtCurrentTime, position) {
     var files = (assets || []).filter(function (asset) { return asset && asset.type !== "folder" && asset.type !== "lut"; });
     var completed = 0;
+    if (files.some(function (asset) { return asset.offline; })) { return Promise.reject(new Error("素材位置离线，缓存预览不能用于导入。请重新连接原始素材。")); }
     if (!files.length) { return Promise.reject(new Error("没有可执行的媒体素材。")); }
     if (placeAtCurrentTime && position !== "end") { files = files.slice().reverse(); }
     return files.reduce(function (promise, asset) {
@@ -3445,6 +3625,7 @@
     var method;
     var payload;
     var script;
+    if (state.assets.some(function (asset) { return asset.path === filePath && asset.offline; })) { return Promise.reject(new Error("原始素材离线，无法导入缓存预览。")); }
     if (!csInterface || state.hostId === "BROWSER") { return Promise.reject(new Error("请在 Premiere Pro 或 After Effects 中执行此操作。")); }
     method = placeAtCurrentTime ? (state.hostId === "AEFT" ? "importMediaToComp" : "importMediaToSequence") : "importMedia";
     payload = JSON.stringify({ path: filePath, position: position || "current", directImport: !!(options && options.directImport), colorLabel: options && options.colorLabel || "none" }); script = "SeekBridge." + method + "(" + JSON.stringify(payload) + ")";
@@ -3549,6 +3730,8 @@
   function friendlyError(error) {
     if (!error) { return "未知错误"; }
     if (error.code === "MEDIA_TOOLS_UNAVAILABLE") { return "媒体组件暂不可用。请在项目数量旁的菜单打开“安装说明”进行修复，再点击“重新检查媒体组件”。原始素材不受影响。"; }
+    var offlineErrors = { QUEUE_BUSY: "另一个面板正在处理此任务，请稍后重新打开", QUEUE_OWNERSHIP_LOST: "任务已由其他面板接管，请重新打开查看", QUEUE_STOPPING: "当前素材正在停止，请稍后继续", BATCH_EXISTS: "已有未完成任务，请先继续或取消", BATCH_CHANGED: "任务已在其他面板更新，请重新打开", EMPTY_BATCH: "当前范围没有可缓存的媒体素材", BATCH_TOO_LARGE: "单次最多准备 10000 项素材，请缩小范围", JOURNAL_RECOVERY_REQUIRED: "任务记录无法读取，请保留记录并选择新的本机缓存目录", NO_RESUMABLE_BATCH: "没有可继续的任务，请重新开始", ENOSPC: "本机磁盘空间不足，请释放空间后重试" };
+    if (offlineErrors[error.code || error.message]) { return offlineErrors[error.code || error.message]; }
     var messages = { CACHE_DISK_FULL: "磁盘剩余空间不足，请清理磁盘后重试", CACHE_BUDGET_EXCEEDED: "预览缓存预算不足，请关闭预览或清理闲置缓存", CACHE_OUTPUT_LIMIT: "当前预览超过缓存容量限制，请选择较低清晰度", CACHE_IO_TIMEOUT: "读取本地缓存超时", MEDIA_PROCESS_TIMEOUT: "媒体处理超时，请检查素材是否可读取", SOURCE_TIMEOUT: "共享位置响应超时", JOB_CANCELLED: "任务已取消", EACCES: "没有操作权限", EPERM: "没有操作权限", ENOENT: "路径不存在或共享位置已离线", FILE_NOT_FOUND: "路径不存在或共享位置已离线" };
     return messages[error.code || error.message] || error.message || String(error);
   }
@@ -3556,6 +3739,255 @@
   function initializeMediaTools() {
     if (!mediaTools) { return; }
     mediaTools.prepare().catch(function (error) { showNotice(friendlyError(error), true, 0); });
+  }
+
+  function createConfiguredMediaTools(preferences) {
+    return FnOSMediaTools.create({ fs: fs, path: path, os: os, crypto: crypto, childProcess: childProcess, extensionRoot: extensionRoot,
+      cacheSettings: { root: preferences.previewCacheRoot || "", maxBytes: (Number(preferences.previewCacheMaxGiB) || 12) * 1024 * 1024 * 1024 },
+      resourceProfile: preferences.previewPerformance === "balanced" ? "balanced" : "low" });
+  }
+
+  function syncMediaActivity() {
+    var playing = !!(selectionPreview.media && !selectionPreview.media.paused || viewerState.media && !viewerState.media.paused || audioHover.media && !audioHover.media.paused);
+    if (mediaTools && mediaTools.setActivity) {
+      mediaTools.setActivity({ scrolling: previewScrolling, hidden: !!document.hidden,
+        playing: playing });
+    }
+    if (playing) { pauseOfflineForPreview(); }
+  }
+
+  function pauseOfflineForPreview() {
+    if (!offlineJobs || offlineYieldPending || offlineJobs.snapshot().status !== "running") { return; }
+    offlineYieldPending = true;
+    offlineJobs.pause().then(function () { renderOfflinePreview(); }, function (error) {
+      offlineSettingsError = friendlyError(error);
+    }).then(function () { offlineYieldPending = false; });
+  }
+
+  function offlineSnapshot() {
+    return offlineJobs ? offlineJobs.snapshot() : { status: "idle", total: 0, done: 0, cached: 0, failed: 0, failures: [], writable: false };
+  }
+
+  function offlineOptions() {
+    return { metadata: elements.offlineMetadata.checked, posters: elements.offlinePoster.checked, sprites: elements.offlineSprites.checked,
+      proxies: elements.offlineProxies.checked, proxyQuality: elements.offlineQuality.value, pin: elements.offlinePin.checked, profile: elements.offlinePerformance.value };
+  }
+
+  function offlineAssetsForScope() {
+    var scope = elements.offlineScope.value;
+    var wanted = Object.create(null);
+    var roots = Object.create(null);
+    if (scope === "selected") {
+      selectedAssets().forEach(function (asset) {
+        if (asset.type === "plugin-folder") { pluginFolderAssetKeys(asset.pluginFolderId).forEach(function (key) { wanted[normalizeAssetKey(key)] = true; }); }
+        else if (asset.path) { wanted[normalizeAssetKey(asset.path)] = true; }
+      });
+    } else if (scope === "folder") {
+      pluginFolderAssetKeys(currentPluginFolderScopeId()).forEach(function (key) { wanted[normalizeAssetKey(key)] = true; });
+    } else { state.roots.forEach(function (root) { if (root.enabled !== false) { roots[root.id] = true; } }); }
+    var seen = Object.create(null);
+    return state.assets.filter(function (asset) {
+      var key = normalizeAssetKey(asset.path);
+      if (["video", "audio", "image"].indexOf(asset.type) === -1 || seen[key] || !(scope === "roots" ? roots[asset.rootId] : wanted[key])) { return false; }
+      seen[key] = true; return true;
+    });
+  }
+
+  function processOfflineAsset(asset, options, signal) {
+    var producerOptions = { purpose: "offline", signal: signal, profile: options.profile };
+    var steps = [];
+    var allCached = true;
+    function add(kind, variant, producer) {
+      steps.push(function () {
+        if (signal.cancelled) { var cancelled = new Error("JOB_CANCELLED"); cancelled.code = "JOB_CANCELLED"; throw cancelled; }
+        return cachedPreview(asset, kind, variant).then(function (record) {
+          if (!record) { allCached = false; }
+          // Explicit preparation always validates the source version, including local cache hits.
+          return producer().then(function (result) {
+            if (!record) { return result; }
+            return cachedPreview(asset, kind, variant).then(function (current) { if (!current || current.sourceSignature !== record.sourceSignature) { allCached = false; } return result; });
+          });
+        });
+      });
+    }
+    if (options.metadata !== false) { add("metadata", null, function () { return mediaTools.metadataFor(asset.path, producerOptions); }); }
+    if (options.posters !== false) {
+      add(asset.type === "video" ? "poster" : asset.type === "audio" ? "waveform" : "still", null, function () {
+        if (asset.type === "video") { return mediaTools.posterFor(asset.path, producerOptions); }
+        if (asset.type === "audio") { return mediaTools.waveformFor(asset.path, producerOptions); }
+        return mediaTools.previewStillFor(asset.path, producerOptions);
+      });
+    }
+    if (options.sprites && asset.type === "video") { add("sprite", null, function () { return mediaTools.spriteFor(asset.path, producerOptions); }); }
+    if (options.proxies && asset.type === "video") { add("proxy", options.proxyQuality, function () { return mediaTools.previewProxyFor(asset.path, options.proxyQuality, producerOptions); }); }
+    return steps.reduce(function (chain, step) { return chain.then(step); }, Promise.resolve()).then(function () {
+      if (signal.cancelled) { var cancelled = new Error("JOB_CANCELLED"); cancelled.code = "JOB_CANCELLED"; throw cancelled; }
+      return mediaTools.pinCachedAsset ? mediaTools.pinCachedAsset(asset.path, options.pin !== false) : null;
+    }).then(function () { return { cached: allCached }; });
+  }
+
+  function initializeOfflineJobs() {
+    if (offlineJobs) { return Promise.resolve(offlineJobs); }
+    if (!mediaTools || !nodeAvailable || typeof LKOfflinePrecache !== "object") { renderOfflinePreview(); return Promise.resolve(null); }
+    offlineJobs = LKOfflinePrecache.create({ fs: fs, path: path, crypto: crypto, cacheRoot: mediaTools.cacheRoot,
+      processAsset: processOfflineAsset, isBusy: function () { return previewScrolling || document.hidden || !!(selectionPreview.media && !selectionPreview.media.paused || viewerState.media && !viewerState.media.paused || audioHover.media && !audioHover.media.paused); } });
+    offlineUnsubscribe = offlineJobs.subscribe(renderOfflinePreview);
+    return offlineJobs.load().then(function () { renderOfflinePreview(); return offlineJobs; }).catch(function (error) { offlineSettingsError = friendlyError(error); renderOfflinePreview(); return offlineJobs; });
+  }
+
+  function populateOfflineSettings(snapshot) {
+    var options = snapshot && snapshot.id && snapshot.options;
+    elements.offlineCacheRoot.value = state.preferences.previewCacheRoot || (mediaTools && mediaTools.cacheRoot ? path ? path.dirname(mediaTools.cacheRoot) : mediaTools.cacheRoot : "默认本机缓存目录");
+    elements.offlineCacheRoot.setAttribute("data-parent-path", state.preferences.previewCacheRoot || "");
+    elements.offlineBudget.value = Number(state.preferences.previewCacheMaxGiB) || 12;
+    elements.offlinePerformance.value = state.preferences.previewPerformance || "low";
+    if (options) {
+      elements.offlineMetadata.checked = options.metadata !== false; elements.offlinePoster.checked = options.posters !== false;
+      elements.offlineSprites.checked = !!options.sprites; elements.offlineProxies.checked = !!options.proxies;
+      elements.offlinePin.checked = options.pin !== false; elements.offlineQuality.value = options.proxyQuality || "540";
+      elements.offlinePerformance.value = options.profile || "low";
+    }
+    elements.offlineScope.value = selectedAssets().length ? "selected" : currentPluginFolderScopeId() ? "folder" : "roots";
+    elements.offlineScope.querySelector('option[value="folder"]').disabled = !currentPluginFolderScopeId();
+  }
+
+  function openOfflinePreview() {
+    hidePopover(elements.resultActionsPopover, elements.resultActionsButton);
+    stopAudioHover(); stopSelectedVideoPreview(); stopSpriteHover();
+    elements.offlinePreviewPane.hidden = false;
+    populateOfflineSettings(offlineSnapshot()); renderOfflinePreview();
+    elements.offlineCloseButton.focus();
+    initializeOfflineJobs().then(function (jobs) { return jobs && jobs.load ? jobs.load() : null; }).then(function () { populateOfflineSettings(offlineSnapshot()); refreshOfflineStats(); renderOfflinePreview(); }).catch(function (error) { offlineSettingsError = friendlyError(error); renderOfflinePreview(); });
+  }
+
+  function closeOfflinePreview() {
+    elements.offlinePreviewPane.hidden = true;
+    elements.resultActionsButton.focus();
+  }
+
+  function refreshOfflineStats() {
+    if (!mediaTools || !mediaTools.cacheStats) { return; }
+    Promise.resolve(mediaTools.cacheStats()).then(function (stats) { offlineCacheStats = stats; renderOfflinePreview(); }).catch(function (error) { offlineSettingsError = friendlyError(error); renderOfflinePreview(); });
+  }
+
+  function renderOfflinePreview() {
+    if (!elements.offlinePreviewPane || elements.offlinePreviewPane.hidden) { return; }
+    var snapshot = offlineSnapshot();
+    var ongoing = ["running", "paused", "cancelling"].indexOf(snapshot.status) !== -1;
+    var locked = snapshot.locked || snapshot.writable === false;
+    var changingDirectory = (elements.offlineCacheRoot.getAttribute("data-parent-path") || "") !== (state.preferences.previewCacheRoot || "");
+    var statuses = { idle: "尚未开始", running: "正在准备", paused: "已暂停", cancelling: "正在取消", completed: "准备完成", cancelled: "已取消" };
+    var assets = offlineAssetsForScope();
+    var options = offlineOptions();
+    var estimate = 0;
+    var unknownDuration = 0;
+    assets.forEach(function (asset) {
+      estimate += (options.metadata ? 4096 : 0) + (options.posters ? 180 * 1024 : 0) + (options.sprites && asset.type === "video" ? 180 * 1024 : 0);
+      if (options.proxies && asset.type === "video") {
+        var duration = Number(asset.mediaMetadata && asset.mediaMetadata.duration);
+        if (duration > 0) { estimate += duration * (options.proxyQuality === "720" ? 2200000 : 1400000) / 8; } else { unknownDuration += 1; }
+      }
+    });
+    var used = offlineCacheStats ? " · 已用 " + SeekLibrary.formatBytes(offlineCacheStats.bytes) : "";
+    elements.offlineEstimate.textContent = assets.length + " 项 · 预计 " + SeekLibrary.formatBytes(estimate) + (unknownDuration ? "起（" + unknownDuration + " 项时长未知）" : "（按所选内容粗估）") + used;
+    elements.offlineSettings.disabled = offlineBusy || ongoing || !!snapshot.locked;
+    elements.offlineQuality.disabled = !options.proxies || elements.offlineSettings.disabled;
+    elements.offlineStatus.textContent = snapshot.locked ? "其他面板正在处理此任务" : statuses[snapshot.status] || snapshot.status;
+    elements.offlineCounts.textContent = snapshot.done + " / " + snapshot.total + " · 已缓存 " + snapshot.cached + " · 失败 " + snapshot.failed;
+    elements.offlineProgress.max = Math.max(1, snapshot.total); elements.offlineProgress.value = snapshot.done + snapshot.failed;
+    elements.offlineCurrentFile.textContent = snapshot.current ? snapshot.current.name || snapshot.current.path : snapshot.recovered && snapshot.status === "paused" ? "已恢复上次任务，等待继续" : "";
+    var errorText = offlineSettingsError || (snapshot.error ? friendlyError({ code: snapshot.error, message: snapshot.error }) : "");
+    if (!mediaTools) { errorText = "离线预览需要在 Adobe 面板中运行。"; }
+    elements.offlineError.textContent = errorText; elements.offlineError.hidden = !errorText;
+    elements.offlineFailures.innerHTML = "";
+    (snapshot.failures || []).slice(0, 6).forEach(function (failure) { var item = document.createElement("li"); item.textContent = (failure.asset && (failure.asset.name || failure.asset.path) || "素材") + "：" + friendlyError({ code: failure.code, message: failure.code }); elements.offlineFailures.appendChild(item); });
+    elements.offlineFailures.hidden = !snapshot.failed;
+    elements.offlineStartButton.hidden = ongoing;
+    elements.offlineStartButton.disabled = offlineBusy || snapshot.locked || (snapshot.writable === false && !changingDirectory) || !mediaTools || !assets.length || !(options.metadata || options.posters || options.sprites || options.proxies);
+    elements.offlinePauseButton.hidden = snapshot.status !== "running";
+    elements.offlineResumeButton.hidden = snapshot.status !== "paused";
+    elements.offlineCancelButton.hidden = !ongoing;
+    elements.offlineRetryButton.hidden = !snapshot.failed || ongoing;
+    [elements.offlinePauseButton, elements.offlineResumeButton, elements.offlineCancelButton, elements.offlineRetryButton].forEach(function (button) { button.disabled = offlineBusy || locked || snapshot.status === "cancelling"; });
+  }
+
+  function saveOfflineConfiguration() {
+    var budget = Number(elements.offlineBudget.value);
+    if (!isFinite(budget) || budget < 2 || budget > 128) { return Promise.reject(new Error("缓存空间上限需在 2 至 128 GiB 之间。")); }
+    var preferences = Object.assign({}, state.preferences, { previewCacheRoot: elements.offlineCacheRoot.getAttribute("data-parent-path") || "", previewCacheMaxGiB: budget, previewPerformance: elements.offlinePerformance.value });
+    var changed = preferences.previewCacheRoot !== (state.preferences.previewCacheRoot || "") || budget !== (Number(state.preferences.previewCacheMaxGiB) || 12) || preferences.previewPerformance !== (state.preferences.previewPerformance || "low");
+    if (!changed) { return Promise.resolve(); }
+    var resources = mediaTools && mediaTools.getResourceStatus ? mediaTools.getResourceStatus() : {};
+    if (resources.active || resources.queued || activePreviewJobs || previewQueue.length) { return Promise.reject(new Error("预览仍在处理，停止滚动并稍后重试保存缓存设置。")); }
+    var replacement;
+    try { replacement = createConfiguredMediaTools(preferences); }
+    catch (directoryError) { return Promise.reject(new Error("无法使用该缓存目录，请选择本机可写的文件夹。原设置保持不变。")); }
+    var saved = stateStore ? persistState(function (latest) { latest.preferences = preferences; }) : null;
+    if (!saved) { if (replacement.dispose) { replacement.dispose().catch(function () {}); } return Promise.reject(new Error("缓存设置未保存，任务尚未开始。")); }
+    state.preferences = saved.preferences;
+    return (offlineJobs ? offlineJobs.dispose() : Promise.resolve()).then(function () {
+      if (offlineUnsubscribe) { offlineUnsubscribe(); offlineUnsubscribe = null; }
+      offlineJobs = null;
+      var old = mediaTools;
+      mediaTools = replacement;
+      offlineCacheStats = null;
+      return (old && old.dispose ? old.dispose() : Promise.resolve()).then(initializeOfflineJobs);
+    });
+  }
+
+  function runOfflineCommand(command) {
+    if (offlineBusy) { return; }
+    offlineBusy = true; offlineSettingsError = ""; renderOfflinePreview();
+    var action = command === "start" ? saveOfflineConfiguration().then(function () { return initializeOfflineJobs(); }).then(function (jobs) {
+      if (!jobs) { throw new Error("当前环境无法准备离线预览。"); }
+      return jobs.start(offlineAssetsForScope(), offlineOptions());
+    }) : offlineJobs ? offlineJobs[command]() : Promise.reject(new Error("任务尚未就绪。"));
+    return Promise.resolve(action).catch(function (error) { offlineSettingsError = friendlyError(error); }).then(function () {
+      offlineBusy = false; refreshOfflineStats(); renderOfflinePreview();
+      if (!elements.offlinePreviewPane.hidden) {
+        var focus = offlineSnapshot().status === "paused" ? elements.offlineResumeButton : offlineSnapshot().status === "running" ? elements.offlinePauseButton : elements.offlineStartButton;
+        (focus.hidden || focus.disabled ? elements.offlineCloseButton : focus).focus();
+      }
+    });
+  }
+
+  function bindOfflineControls() {
+    if (!elements.prepareOfflineButton) { return; }
+    elements.prepareOfflineButton.addEventListener("click", openOfflinePreview);
+    elements.offlineCloseButton.addEventListener("click", closeOfflinePreview);
+    elements.offlineSettings.addEventListener("change", renderOfflinePreview);
+    byId("offlineUnpinButton").addEventListener("click", function () {
+      if (offlineBusy || !mediaTools || !mediaTools.pinCachedAsset) { return; }
+      var assets = offlineAssetsForScope();
+      if (!assets.length) { return; }
+      offlineBusy = true; offlineSettingsError = ""; renderOfflinePreview();
+      assets.reduce(function (chain, asset) {
+        return chain.then(function () { return mediaTools.pinCachedAsset(asset.path, false); });
+      }, Promise.resolve()).then(function () {
+        showNotice("已取消所选范围的缓存保留；文件未删除。", false, 4500);
+      }).catch(function (error) { offlineSettingsError = friendlyError(error); }).then(function () {
+        offlineBusy = false; refreshOfflineStats(); renderOfflinePreview();
+      });
+    });
+    elements.offlineChooseRootButton.addEventListener("click", function () {
+      if (!window.cep || !window.cep.fs || !window.cep.fs.showOpenDialogEx) { offlineSettingsError = "当前环境无法选择本机目录。"; renderOfflinePreview(); return; }
+      var result = window.cep.fs.showOpenDialogEx(false, true, "选择离线预览的本机缓存目录", elements.offlineCacheRoot.getAttribute("data-parent-path") || "", []);
+      if (!result || result.err || !result.data || !result.data.length) { return; }
+      elements.offlineCacheRoot.value = result.data[0]; elements.offlineCacheRoot.setAttribute("data-parent-path", result.data[0]);
+      offlineSettingsError = ""; renderOfflinePreview();
+    });
+    [["offlineStartButton", "start"], ["offlinePauseButton", "pause"], ["offlineResumeButton", "resume"], ["offlineCancelButton", "cancel"], ["offlineRetryButton", "retryFailed"]].forEach(function (binding) { elements[binding[0]].addEventListener("click", function () { runOfflineCommand(binding[1]); }); });
+    elements.offlinePreviewPane.addEventListener("keydown", function (event) {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); closeOfflinePreview(); return; }
+      if (event.key !== "Tab") { return; }
+      var controls = Array.prototype.filter.call(elements.offlinePreviewPane.querySelectorAll("button,input,select"), function (control) { return !control.matches(":disabled") && !control.hidden && control.getClientRects().length; });
+      var first = controls[0]; var last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    document.addEventListener("visibilitychange", function () { syncMediaActivity(); if (!document.hidden) { pumpPreviewQueue(); } });
+    initializeOfflineJobs();
   }
 
   function bindMediaToolsControls() {
@@ -3584,7 +4016,7 @@
   }
 
   function init() {
-    cacheElements(); renderLabelFilterChoices(); ensureContextMenuExtensions(); initializeRoots(); detectHost(); bindEvents();
+    cacheElements(); renderLabelFilterChoices(); ensureContextMenuExtensions(); initializeRoots(); detectHost(); bindEvents(); bindOfflineControls();
     renderLocations(); syncSortFieldLabel(); syncSortDirection(); syncGridZoom(); syncViewMode(); syncCardStyle(); syncSelectAllButton(); syncFilterBadge();
     if (state.preferences.searchOpen && elements.searchToggleButton) { toggleSearchPopover(); }
     else { state.preferences.searchOpen = false; }
@@ -3594,6 +4026,7 @@
       if (!storageStatus.writable || storageStatus.recovered) { showNotice(storageStatus.message, !storageStatus.writable, 0); }
     }
     initializeMediaTools();
+    if (mediaStartupError) { showNotice(mediaStartupError, true, 0); }
   }
 
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }

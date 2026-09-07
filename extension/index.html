@@ -2,13 +2,14 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="lkfb-version" content="0.6.8" />
+    <meta name="lkfb-version" content="0.6.9" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval';" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LK‘s File Bridge</title>
     <link rel="stylesheet" href="css/panel.css" />
     <link rel="stylesheet" href="css/ui-4.3.css" />
     <link rel="stylesheet" href="css/player-4.5.css" />
+    <link rel="stylesheet" href="css/offline-preview.css" />
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -117,9 +118,34 @@
       <button id="createFolderFromResultsButton" class="menu-action" type="button">新建文件夹</button>
       <button id="uploadFilesButton" class="menu-action" type="button">上传文件</button>
       <button id="pasteAssetsFromResultsButton" class="menu-action" type="button" disabled>粘贴</button>
+      <button id="prepareOfflineButton" class="menu-action" type="button"><span class="ui-icon" data-icon="download" aria-hidden="true"></span>准备离线预览</button>
       <button id="clearPreviewCacheButton" class="menu-action" type="button">清理闲置预览缓存</button>
       <button id="diagnosticsButton" class="menu-action" type="button">版本与运行信息</button>
     </div>
+
+    <section id="offlinePreviewPane" class="offline-preview-pane" role="dialog" aria-modal="true" aria-labelledby="offlinePreviewTitle" hidden>
+      <header class="offline-heading"><h2 id="offlinePreviewTitle">准备离线预览</h2><button id="offlineCloseButton" class="icon-button" type="button" title="关闭离线预览任务" aria-label="关闭离线预览任务"><span class="ui-icon" data-icon="x" aria-hidden="true"></span></button></header>
+      <div class="offline-content">
+        <fieldset id="offlineSettings" class="offline-settings">
+          <label class="offline-field">素材范围<select id="offlineScope"><option value="selected">选中项</option><option value="folder">当前插件文件夹</option><option value="roots">已启用的素材位置</option></select></label>
+          <div class="offline-products" role="group" aria-label="缓存内容">
+            <label class="check-row"><input id="offlineMetadata" type="checkbox" checked />元数据</label>
+            <label class="check-row"><input id="offlinePoster" type="checkbox" checked />静态海报</label>
+            <label class="check-row"><input id="offlineSprites" type="checkbox" />悬停雪碧图</label>
+            <div class="offline-proxy-row"><label class="check-row"><input id="offlineProxies" type="checkbox" />播放代理</label><select id="offlineQuality" aria-label="播放代理分辨率" disabled><option value="540">540p</option><option value="720">720p</option></select></div>
+          </div>
+          <label class="check-row offline-pin"><input id="offlinePin" type="checkbox" checked />保留离线缓存</label>
+          <button id="offlineUnpinButton" class="text-button" type="button" title="取消所选范围的离线保留标记，不删除任何文件">取消所选范围的缓存保留</button>
+          <label class="offline-field">性能模式<select id="offlinePerformance"><option value="low">低占用</option><option value="balanced">均衡</option></select></label>
+          <label class="offline-field" for="offlineCacheRoot">本机缓存目录</label>
+          <div class="offline-directory"><input id="offlineCacheRoot" type="text" readonly aria-label="本机缓存目录" /><button id="offlineChooseRootButton" class="icon-button" type="button" title="选择本机缓存目录" aria-label="选择本机缓存目录"><span class="icon-folder" aria-hidden="true"></span></button></div>
+          <label class="offline-field offline-budget">空间上限<span><input id="offlineBudget" type="number" min="2" max="128" step="1" value="12" aria-label="缓存空间上限 GiB" /> GiB</span></label>
+        </fieldset>
+        <div id="offlineEstimate" class="offline-estimate"></div>
+        <section class="offline-job" aria-label="任务进度"><div class="offline-status-row"><strong id="offlineStatus">尚未开始</strong><span id="offlineCounts">0 / 0</span></div><progress id="offlineProgress" max="1" value="0" aria-label="离线预览任务进度"></progress><p id="offlineCurrentFile"></p><p id="offlineError" class="offline-error" role="alert" hidden></p><ul id="offlineFailures" class="offline-failures" hidden></ul></section>
+      </div>
+      <footer class="offline-actions"><button id="offlineStartButton" class="button button-primary" type="button"><span class="ui-icon" data-icon="play" aria-hidden="true"></span>开始准备</button><button id="offlinePauseButton" class="button button-secondary" type="button" hidden>暂停</button><button id="offlineResumeButton" class="button button-primary" type="button" hidden>继续</button><button id="offlineRetryButton" class="button button-secondary" type="button" hidden>重试失败项</button><button id="offlineCancelButton" class="button button-secondary" type="button" hidden>取消任务</button></footer>
+    </section>
 
     <div id="toolbarSearchPopover" class="toolbar-search" hidden></div>
 
@@ -225,6 +251,7 @@
     <script src="js/CSInterface.js"></script>
     <script src="js/library.js"></script>
     <script src="js/media-tools.js"></script>
+    <script src="js/offline-precache.js"></script>
     <script src="js/lut-tools.js"></script>
     <script src="js/timecode.js"></script>
     <script src="js/state-store.js"></script>

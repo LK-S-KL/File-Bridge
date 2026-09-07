@@ -12,6 +12,8 @@ async function verify(archive, destination) {
   if (!archive || !destination) throw new Error("Usage: node scripts/verify-macos-install.cjs PACKAGE.zip REPORT.json");
   if (fs.existsSync(destination)) throw new Error("Report already exists");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "lkfb-macos-acceptance-"));
+  const services = [];
+  let offlineQueue;
   try {
     extractZip(path.resolve(archive), path.join(temp, "package"));
     const packageRoot = path.join(temp, "package", fs.readdirSync(path.join(temp, "package"))[0]);
@@ -45,6 +47,7 @@ async function verify(archive, destination) {
       fs, path, crypto, childProcess: wrapper, os: { homedir: () => home }, extensionRoot: installation,
       cacheSettings: { minimumFreeBytes: 0 }
     });
+    services.push(service);
     const status = await service.prepare();
     assert.equal(status.source, "bundled");
     const source = path.join(temp, "test clip.mp4");
@@ -60,6 +63,33 @@ async function verify(archive, destination) {
     outputs.audio = await service.audioProxyFor(source);
     outputs.frame = await service.frameFor(source, 0.2, 320, 180);
     for (const [kind, file] of Object.entries(outputs)) assert.ok(file && fs.statSync(file).size > 100, `${kind} not created`);
+    if (fs.existsSync(path.join(installation, "js/offline-precache.js"))) {
+      offlineQueue = require(path.join(installation, "js/offline-precache.js")).create({ fs, path, crypto, cacheRoot: service.cacheRoot,
+        processAsset: async (asset, _options, signal) => {
+          const options = {purpose:"offline",signal};
+          await service.metadataFor(asset.path,options);
+          await service.posterFor(asset.path,options);
+          await service.spriteFor(asset.path,options);
+          await service.pinCachedAsset(asset.path,true);
+          return {cached:true};
+        }
+      });
+      await offlineQueue.start([{path:source,name:"Acceptance clip",type:"video"}],{sprites:true});
+      const deadline = Date.now()+20000;
+      while (offlineQueue.snapshot().status!=="completed" || offlineQueue.snapshot().owned) {
+        if (Date.now()>deadline) throw new Error("Offline batch acceptance timed out");
+        await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      assert.equal(offlineQueue.snapshot().failed,0);
+      assert.equal(offlineQueue.snapshot().done,1);
+      await offlineQueue.dispose();
+      const reloaded = require(path.join(installation,"js/media-tools.js")).create({fs,path,crypto,childProcess:wrapper,os:{homedir:()=>home},extensionRoot:installation,cacheSettings:{minimumFreeBytes:0}});
+      services.push(reloaded);reloaded.setActivity({hidden:true});
+      fs.renameSync(source,source+".offline");
+      assert.ok(await reloaded.cachedPreviewFor(source,"poster"));
+      assert.ok(await reloaded.cachedPreviewFor(source,"sprite"));
+      fs.renameSync(source+".offline",source);
+    }
     assert.equal(crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex"), originalHash);
     // Simulate a broken new package; the last successful installation must remain intact.
     fs.renameSync(path.join(extension, "vendor/media"), path.join(extension, "vendor/media-disabled"));
@@ -73,13 +103,17 @@ async function verify(archive, destination) {
     const report = {
       version, date: new Date().toISOString(), packageSha256: crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex"),
       platform: process.platform, architecture: process.arch, mediaSelection: status,
-      passed: ["offline bundled installation", "quarantined source copied before execution", "upgrade", "installed payload matches archive", "runtime agrees with installer", "metadata", "poster", "waveform", "sprite", "video proxy", "audio proxy", "frame", "source preserved", "missing bundle preserves installed version", "recoverable uninstall"],
+      passed: ["offline bundled installation", "quarantined source copied before execution", "upgrade", "installed payload matches archive", "runtime agrees with installer", "metadata", "poster", "waveform", "sprite", "video proxy", "audio proxy", "frame", "source preserved", "missing bundle preserves installed version", "recoverable uninstall"].concat(offlineQueue?["persisted offline batch", "cached previews after service restart with source offline"]:[]),
       limits: ["System tool directories excluded instead of uninstalling user FFmpeg", "Current-user Adobe directory untouched", "PlayerDebugMode preference write skipped", "No new Adobe host UI or Intel hardware acceptance"]
     };
     fs.writeFileSync(destination, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
     console.log(JSON.stringify(report, null, 2));
     return report;
-  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+  } finally {
+    if (offlineQueue) await offlineQueue.dispose();
+    for (const service of services) if (service.dispose) await service.dispose();
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 }
 if (require.main === module) verify(process.argv[2], process.argv[3]).catch(error => { console.error(error); process.exitCode = 1; });
 module.exports = { verify };

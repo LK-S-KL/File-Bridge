@@ -328,6 +328,7 @@
       format: displayFormat(format, sourcePath),
       formatShort: sourcePath ? containerToken(format.format_name, sourcePath) : (format.format_name || ""),
       duration: duration,
+      startTime: numberOrNull(format.start_time) || 0,
       totalBitrate: totalBitrate,
       videoCodec: videoCodecs.length ? videoCodecs.join(" + ") : "无",
       videoStreamIndex: streamTypeIndex(streams, video),
@@ -472,7 +473,14 @@
     var mediaToolsPromise = null;
     var mediaToolsStatus = { state: "idle", source: null, architecture: null, error: null };
     var selectedMediaTools = null;
-    var cacheRoot = path.join(os.homedir(), "Library", "Caches", "com.fnnas.fnosbridge.mvp");
+    var disposed = false;
+    var cacheSettings = runtime.cacheSettings || {};
+    var defaultCacheRoot = path.join(os.homedir(), "Library", "Caches", "com.fnnas.fnosbridge.mvp");
+    var cacheRoot = cacheSettings.root ? path.join(path.resolve(cacheSettings.root), "com.fnnas.fnosbridge.mvp") : defaultCacheRoot;
+    var assetDirectory = path.join(cacheRoot, "assets-v1");
+    var retainDirectory = path.join(cacheRoot, "retains-v1");
+    var lockDirectory = path.join(defaultCacheRoot, "resource-locks");
+    var workerPath = path.join(typeof __dirname === "string" ? __dirname : path.join(extensionRoot, "js"), "media-worker.pl");
     var metadataDirectory = path.join(cacheRoot, "metadata");
     var posterDirectory = path.join(cacheRoot, "posters");
     var spriteDirectory = path.join(cacheRoot, "sprites");
@@ -494,9 +502,10 @@
     var cancelledPrefixes = {};
     var activeFfmpegCount = 0;
     var nextFfmpegJobId = 1;
-    var MAX_FFMPEG_CONCURRENCY = 2;
+    var MAX_FFMPEG_CONCURRENCY = 1;
+    var activity = { scrolling: false, playing: false, hidden: false };
+    var decoderThreads = (runtime.resourceProfile || runtime.performanceProfile) === "balanced" ? 2 : 1;
     var terminationGraceMs = Math.max(10, Number(runtime.terminationGraceMs) || 600);
-    var cacheSettings = runtime.cacheSettings || {};
     var cacheMaxBytes = Number(cacheSettings.maxBytes) || 12 * 1024 * 1024 * 1024;
     var cacheTargetBytes = Math.min(cacheMaxBytes, Number(cacheSettings.targetBytes) || 10 * 1024 * 1024 * 1024);
     var minimumFreeBytes = cacheSettings.minimumFreeBytes === 0 ? 0 : Number(cacheSettings.minimumFreeBytes) || 512 * 1024 * 1024;
@@ -512,6 +521,196 @@
     var activeWorkDirectories = {};
     var cacheWorkDirectories = {};
     var nextTemporaryOutputId = 1;
+    var assetRecords = {};
+    var pendingAssetReads = {};
+    var sourceValidations = {};
+    var sourceValidationAt = {};
+    var serviceToken = crypto.randomBytes(8).toString("hex");
+    var assetWrites = {};
+    var backgroundEpochs = {};
+    var durableSubscribers = {};
+    var passiveSubscribers = {};
+    var jobThreadProfiles = {};
+    var persistedPins = {};
+    var otherInstanceRetains = {};
+    var retainWrite = Promise.resolve();
+    var cacheBytes = 0;
+    var cacheLayerBytes = { images: 0, proxies: 0 };
+    var layerMax = { images: Math.min(cacheMaxBytes, Number(cacheSettings.imageMaxBytes) || Math.max(1, Math.floor(cacheMaxBytes / 3))), proxies: Math.min(cacheMaxBytes, Number(cacheSettings.proxyMaxBytes) || Math.max(1, Math.floor(cacheMaxBytes * 2 / 3))) };
+    if (cacheMaxBytes < 1024 * 1024) { layerMax.images = cacheMaxBytes; layerMax.proxies = cacheMaxBytes; }
+
+    function assetId(filePath) { return crypto.createHash("sha1").update(path.resolve(filePath)).digest("hex"); }
+    function sourceSignature(stat) { return String(stat.size) + ":" + String(stat.mtimeMs || stat.mtime && stat.mtime.getTime() || 0); }
+    function assetFile(filePath) { return path.join(assetDirectory, assetId(filePath) + ".json"); }
+    function artifactKey(kind, variant) { return kind === "proxy" ? "proxy:" + profileConfig(variant).name : kind; }
+    function cacheLayer(filePath) { return /^(proxies|audio)$/.test(path.relative(cacheRoot, filePath).split(path.sep)[0]) ? "proxies" : "images"; }
+    function forgetCacheFile(filePath) {
+      if (!cacheRecords[filePath]) { return; }
+      cacheBytes -= cacheRecords[filePath].size; cacheLayerBytes[cacheLayer(filePath)] -= cacheRecords[filePath].size; delete cacheRecords[filePath];
+    }
+    function rememberCacheFile(filePath, stat, usedMs, temporary) {
+      forgetCacheFile(filePath);
+      cacheRecords[filePath] = { path: filePath, size: stat.size, usedMs: usedMs || Date.now(), temporary: !!temporary };
+      cacheBytes += stat.size; cacheLayerBytes[cacheLayer(filePath)] += stat.size;
+    }
+    function loadAsset(filePath, refresh) {
+      var id = assetId(filePath);
+      if (assetRecords[id] && !refresh) { return Promise.resolve(assetRecords[id]); }
+      if (pendingAssetReads[id]) { return pendingAssetReads[id]; }
+      pendingAssetReads[id] = cacheCall("readFile", [assetFile(filePath), "utf8"]).then(function (data) {
+        var record = JSON.parse(data);
+        if (record.version !== 1 || record.source !== path.resolve(filePath) || typeof record.signature !== "string" || !record.artifacts || typeof record.artifacts !== "object" || Array.isArray(record.artifacts)) { return null; }
+        assetRecords[id] = record;
+        return record;
+      }).catch(function () { return null; }).then(function (record) { delete pendingAssetReads[id]; return record; });
+      return pendingAssetReads[id];
+    }
+    function saveAsset(record) {
+      var destination = assetFile(record.source);
+      var result = (assetWrites[destination] || Promise.resolve()).then(function () {
+        var temporary = cacheTemporaryPath(destination);
+        return new Promise(function (resolve, reject) {
+          childProcess.execFile("/usr/bin/perl", [workerPath, "--index", destination, temporary, JSON.stringify(record)], { timeout: 5000, maxBuffer: 2 * 1024 * 1024 }, function (error, stdout) {
+            if (error) { removeFailedCacheFile(temporary); reject(error); return; }
+            try {
+              var stored = JSON.parse(stdout);
+              if (stored.signature === record.signature) { stored.artifacts = Object.assign({}, stored.artifacts, record.artifacts); }
+              if ((record.pinnedAt || 0) > (stored.pinnedAt || 0)) { stored.pinned = record.pinned; stored.pinnedAt = record.pinnedAt; }
+              if ((record.validatedAt || 0) <= (stored.validatedAt || 0)) { Object.assign(record, stored); }
+              resolve();
+            } catch (parseError) { reject(parseError); }
+          });
+        });
+      });
+      assetWrites[destination] = result.catch(function () {});
+      return result;
+    }
+    function recordArtifact(filePath, stat, kind, value, variant) {
+      return cacheCall("stat", [filePath]).then(function (current) {
+        if (sourceSignature(current) !== sourceSignature(stat)) { var error = new Error("SOURCE_CHANGED"); error.code = "SOURCE_CHANGED"; throw error; }
+        return loadAsset(filePath);
+      }).then(function (record) {
+        var signature = sourceSignature(stat);
+        if (!record || record.signature !== signature) { record = { version: 1, source: path.resolve(filePath), signature: signature, artifacts: {}, pinned: !!(record && record.pinned), pinnedAt: record && record.pinnedAt || 0 }; }
+        record.artifacts[artifactKey(kind, variant)] = kind === "metadata" ? { metadata: value } : typeof value === "string" ? { path: path.relative(cacheRoot, value) } : Object.assign({}, value, { path: path.relative(cacheRoot, value.path) });
+        record.validatedAt = Date.now(); record.offline = false;
+        assetRecords[assetId(filePath)] = record;
+        if (record.pinned && kind !== "metadata") { persistedPins[typeof value === "string" ? value : value.path] = true; }
+        return saveAsset(record).then(function () { return value; });
+      });
+    }
+    function cachedPreviewFor(filePath, kind, variant, refreshed) {
+      return loadAsset(filePath).then(function (record) {
+        var artifact = record && record.artifacts[artifactKey(kind, variant)];
+        var result;
+        var actualKind = kind;
+        if (record && kind === "poster" && !artifact) { actualKind = record.artifacts.still ? "still" : "waveform"; artifact = record.artifacts[actualKind]; }
+        if (record && kind === "proxy" && !variant) {
+          ["540", "720", "360", "480", "1080", "source", "4k"].some(function (quality) { if (record.artifacts["proxy:" + quality]) { artifact = record.artifacts["proxy:" + quality]; return true; } return false; });
+        }
+        if (!artifact || typeof artifact !== "object") {
+          if (record && !refreshed) { return loadAsset(filePath, true).then(function () { return cachedPreviewFor(filePath, kind, variant, true); }); }
+          return null;
+        }
+        result = Object.assign({}, artifact, { sourceSignature: record.signature, cached: true, offline: !!record.offline, metadata: record.artifacts.metadata && record.artifacts.metadata.metadata || artifact.metadata });
+        if (kind === "metadata") { return result.metadata && typeof result.metadata === "object" ? result : null; }
+        if (typeof artifact.path !== "string" || path.isAbsolute(artifact.path)) { return null; }
+        result.path = path.resolve(cacheRoot, artifact.path);
+        var allowedDirectory = actualKind === "poster" ? posterDirectory : kind === "sprite" ? spriteDirectory : kind === "proxy" ? proxyDirectory : actualKind === "still" ? stillPreviewDirectory : actualKind === "waveform" ? waveformDirectory : "";
+        if (!allowedDirectory || path.dirname(result.path) !== allowedDirectory || !ownedCachePath(result.path) || !usableCacheFile(result.path)) { return null; }
+        if (kind === "sprite" && (!Array.isArray(result.sampleTimes) || result.sampleTimes.length !== SPRITE_FRAMES || result.sampleTimes.some(function (time) { return !isFinite(time) || time < 0; }))) { return null; }
+        if (record.pinned) { persistedPins[result.path] = true; }
+        return result;
+      });
+    }
+    function validateSourceInBackground(filePath) {
+      if (disposed) { return; }
+      if (sourceValidations[filePath] || Date.now() - (sourceValidationAt[filePath] || 0) < 30000) { return; }
+      sourceValidationAt[filePath] = Date.now();
+      sourceValidations[filePath] = setTimeout(function () {
+        delete sourceValidations[filePath];
+        if (activity.scrolling || activity.playing || activity.hidden) { sourceValidationAt[filePath] = 0; return; }
+        delete sourceStatCache[filePath];
+        statSource(filePath).then(function (stat) {
+          return loadAsset(filePath).then(function (record) {
+            if (!record) { return; }
+            if (record.signature !== sourceSignature(stat)) { record.signature = sourceSignature(stat); record.artifacts = {}; }
+            record.offline = false; record.validatedAt = Date.now();
+            return saveAsset(record);
+          });
+        }).catch(function () { var record = assetRecords[assetId(filePath)]; if (record) { record.offline = true; saveAsset(record).catch(function () {}); } });
+      }, Number(runtime.sourceValidationDelayMs) || 1000);
+      if (sourceValidations[filePath].unref) { sourceValidations[filePath].unref(); }
+    }
+    function pinCachedAsset(filePath, pinned) {
+      return loadAsset(filePath).then(function (record) {
+        if (!record) { record = { version: 1, source: path.resolve(filePath), signature: "", artifacts: {} }; assetRecords[assetId(filePath)] = record; }
+        record.pinned = !!pinned;
+        record.pinnedAt = Date.now();
+        Object.keys(record.artifacts).forEach(function (key) {
+          var artifact = record.artifacts[key];
+          if (artifact.path && !path.isAbsolute(artifact.path)) { var candidate = path.resolve(cacheRoot, artifact.path); if (ownedCachePath(candidate)) { if (pinned) { persistedPins[candidate] = true; } else { delete persistedPins[candidate]; } } }
+        });
+        return saveAsset(record).then(function () { return !!pinned; });
+      });
+    }
+    function validateCachedAsset(filePath) {
+      delete sourceStatCache[filePath];
+      return statSource(filePath).then(function (stat) {
+        return loadAsset(filePath).then(function (record) {
+          if (!record) { return null; }
+          if (record.signature !== sourceSignature(stat)) { record.signature = sourceSignature(stat); record.artifacts = {}; }
+          record.validatedAt = Date.now(); record.offline = false;
+          return saveAsset(record).then(function () { return record; });
+        });
+      });
+    }
+    function refreshPersistentPins() {
+      var pins = {};
+      return cacheCall("readdir", [assetDirectory]).then(function (names) {
+        names = names.filter(function (name) { return /^[a-f0-9]{40}\.json$/.test(name); });
+        var cursor = 0;
+        function batch() {
+          var group = names.slice(cursor, cursor + 24); cursor += group.length;
+          if (!group.length) { return; }
+          return Promise.all(group.map(function (name) {
+          return cacheCall("readFile", [path.join(assetDirectory, name), "utf8"]).then(function (data) {
+            var record = JSON.parse(data);
+            if (record.version !== 1 || !record.pinned || !record.artifacts) { return; }
+            Object.keys(record.artifacts).forEach(function (key) {
+              var relative = record.artifacts[key].path;
+              if (typeof relative === "string" && !path.isAbsolute(relative)) { var candidate = path.resolve(cacheRoot, relative); if (ownedCachePath(candidate)) { pins[candidate] = true; } }
+            });
+          }).catch(function () {});
+          })).then(batch);
+        }
+        return batch();
+      }).then(function () { persistedPins = pins; return refreshInstanceRetains(); });
+    }
+    function refreshInstanceRetains() {
+      var retains = {};
+      return cacheCall("readdir", [retainDirectory]).then(function (names) {
+        return Promise.all(names.filter(function (name) { return /^\d+-[a-f0-9]+\.json$/.test(name); }).map(function (name) {
+          if (name === process.pid + "-" + serviceToken + ".json") { return; }
+          var ownerPid = Number(name.split("-")[0]);
+          try { process.kill(ownerPid, 0); } catch (error) { if (error.code === "ESRCH") { return; } }
+          return cacheCall("readFile", [path.join(retainDirectory, name), "utf8"]).then(function (data) {
+            var items = JSON.parse(data);
+            if (!Array.isArray(items)) { return; }
+            items.forEach(function (relative) { if (typeof relative === "string" && !path.isAbsolute(relative)) { var candidate = path.resolve(cacheRoot, relative); if (ownedCachePath(candidate)) { retains[candidate] = true; } } });
+          }).catch(function () {});
+        }));
+      }).then(function () { otherInstanceRetains = retains; });
+    }
+    function persistRetains() {
+      var destination = path.join(retainDirectory, process.pid + "-" + serviceToken + ".json");
+      retainWrite = retainWrite.then(function () {
+        var temporary = destination + ".part";
+        var items = Object.keys(cacheRetains).filter(function (filePath) { return cacheRetains[filePath] > 0; }).map(function (filePath) { return path.relative(cacheRoot, filePath); });
+        return cacheCall("writeFile", [temporary, JSON.stringify(items), "utf8"]).then(function () { return cacheCall("rename", [temporary, destination]); });
+      }).catch(function () {});
+      return retainWrite;
+    }
 
     function statSource(filePath) {
       var now = Date.now();
@@ -544,8 +743,14 @@
 
     function usableCacheFile(filePath) {
       try {
-        var stat = fs.statSync(filePath);
+        var stat = fs.lstatSync(filePath);
         if (!stat.isFile() || stat.size <= 0) { return false; }
+        if (/\.(png|jpg|jpeg)$/i.test(filePath)) {
+          var descriptor = fs.openSync(filePath, "r");
+          var header = Buffer.alloc(8);
+          try { fs.readSync(descriptor, header, 0, 8, 0); } finally { fs.closeSync(descriptor); }
+          if (/\.png$/i.test(filePath) ? header.toString("hex") !== "89504e470d0a1a0a" : header[0] !== 255 || header[1] !== 216 || header[2] !== 255) { return false; }
+        }
         if (filePath.indexOf(cacheRoot + path.sep) === 0) {
           cacheLeases[filePath] = Date.now() + 10000;
           if (cacheRecords[filePath]) { cacheRecords[filePath].usedMs = Date.now(); }
@@ -560,14 +765,15 @@
       try {
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
-          delete cacheRecords[filePath];
+          forgetCacheFile(filePath);
         }
       } catch (ignoreCleanupError) {}
     }
 
     function ensureDirectories() {
-      [cacheRoot, metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory, stillPreviewDirectory].forEach(function (directory) {
+      [cacheRoot, assetDirectory, retainDirectory, lockDirectory, metadataDirectory, posterDirectory, spriteDirectory, waveformDirectory, proxyDirectory, frameDirectory, audioProxyDirectory, stillPreviewDirectory].forEach(function (directory) {
         fs.mkdirSync(directory, { recursive: true });
+        if (fs.lstatSync(directory).isSymbolicLink()) { throw new Error("CACHE_DIRECTORY_SYMLINK"); }
       });
     }
 
@@ -590,24 +796,32 @@
     }
 
     function cacheProtected(filePath) {
-      return cacheRetains[filePath] > 0 || cacheLeases[filePath] > Date.now() || pendingOutputs[filePath] || activeTemporaryPaths[filePath];
+      return persistedPins[filePath] || otherInstanceRetains[filePath] || cacheRetains[filePath] > 0 || cacheLeases[filePath] > Date.now() || pendingOutputs[filePath] || activeTemporaryPaths[filePath] || cacheRecords[filePath] && cacheRecords[filePath].temporary && !deadTemporaryOwner(filePath);
+    }
+    function deadTemporaryOwner(filePath) {
+      var relative = path.relative(cacheRoot, filePath);
+      var match = relative.match(/\.(\d+)-(?:[a-f0-9]+-)?\d+\.part\./) || relative.match(/-(\d+)-\d+(?:-[a-f0-9]+)?(?:\/|$)/);
+      if (!match || Number(match[1]) < 1) { return false; }
+      try { process.kill(Number(match[1]), 0); return false; } catch (error) { return error.code === "ESRCH"; }
     }
 
     function retainCacheFile(filePath) {
       if (!filePath || !ownedCachePath(filePath)) { return; }
       cacheRetains[filePath] = (cacheRetains[filePath] || 0) + 1;
+      return persistRetains();
     }
 
     function releaseCacheFile(filePath) {
       if (!filePath || !cacheRetains[filePath]) { return; }
       cacheRetains[filePath] -= 1;
       if (!cacheRetains[filePath]) { delete cacheRetains[filePath]; }
+      return persistRetains();
     }
 
     function recordCacheFile(filePath) {
       return cacheCall("lstat", [filePath]).then(function (stat) {
         if (stat.isFile() && !stat.isSymbolicLink()) {
-          cacheRecords[filePath] = { path: filePath, size: stat.size, usedMs: Date.now() };
+          rememberCacheFile(filePath, stat);
         }
       });
     }
@@ -625,12 +839,12 @@
               var filePath = path.join(directory, name);
               return cacheCall("lstat", [filePath]).then(function (stat) {
                 if (stat.isSymbolicLink()) { return; }
-                if (stat.isDirectory() && name.charAt(0) === ".") {
+                if (stat.isDirectory() && name.charAt(0) === "." && /^\.(?:[a-f0-9]{40}|sprite)-/.test(name)) {
                   cacheWorkDirectories[filePath] = stat.mtimeMs || stat.mtime.getTime();
                   return visit(filePath);
                 }
-                if (stat.isFile() && !cacheRecords[filePath]) {
-                  cacheRecords[filePath] = { path: filePath, size: stat.size, usedMs: stat.mtimeMs || stat.mtime.getTime(), temporary: name.charAt(0) === "." || /\.part\./.test(name) || directories.indexOf(directory) === -1 };
+                if (stat.isFile() && !cacheRecords[filePath] && (directories.indexOf(directory) === -1 || /^[a-f0-9]{40}[-.].+\.(?:png|jpg|mp4|m4a|json)$/.test(name))) {
+                  rememberCacheFile(filePath, stat, stat.mtimeMs || stat.mtime.getTime(), name.charAt(0) === "." || /\.part\./.test(name) || directories.indexOf(directory) === -1);
                 }
               }).catch(function (error) { if (error.code !== "ENOENT") { throw error; } });
             })).then(batch);
@@ -638,43 +852,49 @@
           return batch();
         });
       }
-      cacheIndexPromise = Promise.all(directories.map(visit)).catch(function (error) { cacheIndexPromise = null; throw error; });
+      cacheIndexPromise = refreshPersistentPins().then(function () { return Promise.all(directories.map(visit)); }).catch(function (error) { cacheIndexPromise = null; throw error; });
       return cacheIndexPromise;
     }
 
     function cacheTotals() {
-      var total = Object.keys(cacheRecords).reduce(function (sum, key) { return sum + cacheRecords[key].size; }, 0);
       var reserved = Object.keys(cacheReservations).reduce(function (sum, key) { return sum + cacheReservations[key]; }, 0);
-      return { bytes: total, reservedBytes: reserved, maxBytes: cacheMaxBytes, targetBytes: cacheTargetBytes };
+      return { bytes: cacheBytes, reservedBytes: reserved, maxBytes: cacheMaxBytes, targetBytes: cacheTargetBytes, root: cacheRoot, layers: { images: { bytes: cacheLayerBytes.images, maxBytes: layerMax.images }, proxies: { bytes: cacheLayerBytes.proxies, maxBytes: layerMax.proxies } }, pinnedFiles: Object.keys(persistedPins).length };
     }
 
-    function pruneCacheInternal(extraBytes, force) {
+    function pruneCacheInternal(extraBytes, force, outputPath) {
       return indexCache().then(function () {
         var total = cacheTotals().bytes;
         var reservation = cacheTotals().reservedBytes + (Number(extraBytes) || 0);
         var budgetExceeded = total + reservation > cacheMaxBytes;
+        var layer = outputPath ? cacheLayer(outputPath) : cacheLayerBytes.images > layerMax.images ? "images" : cacheLayerBytes.proxies > layerMax.proxies ? "proxies" : null;
+        var layerReservation = layer ? Object.keys(cacheReservations).reduce(function (sum, key) { return sum + (cacheLayer(key) === layer ? cacheReservations[key] : 0); }, 0) + (Number(extraBytes) || 0) : 0;
+        var layerExceeded = layer && cacheLayerBytes[layer] + layerReservation > layerMax[layer];
+        if (!force && !budgetExceeded && !layerExceeded && !Object.keys(cacheWorkDirectories).some(function (directory) { return cacheWorkDirectories[directory] < Date.now() - 3600000; })) { return cacheTotals(); }
+        return refreshPersistentPins().then(function () {
         var target = force ? 0 : budgetExceeded ? Math.max(0, Math.min(cacheTargetBytes, cacheMaxBytes - reservation)) : total;
         var records = Object.keys(cacheRecords).map(function (key) { return cacheRecords[key]; }).sort(function (a, b) { return a.usedMs - b.usedMs; });
         var chain = Promise.resolve();
         records.forEach(function (record) {
           chain = chain.then(function () {
             var staleTemporary = record.temporary && record.usedMs < Date.now() - 3600000;
-            if ((!staleTemporary && total <= target) || cacheProtected(record.path)) { return; }
+            if (!force && layer && cacheLayer(record.path) !== layer) { return; }
+            if ((!staleTemporary && total <= target && !(layer && cacheLayer(record.path) === layer && cacheLayerBytes[layer] + layerReservation > layerMax[layer])) || cacheProtected(record.path)) { return; }
             return cacheCall("unlink", [record.path]).then(function () {
-              total -= record.size; delete cacheRecords[record.path];
+              total -= record.size; forgetCacheFile(record.path);
             }, function (error) {
-              if (error.code === "ENOENT") { total -= record.size; delete cacheRecords[record.path]; }
+              if (error.code === "ENOENT") { total -= record.size; forgetCacheFile(record.path); }
             });
           });
         });
         return chain.then(function () {
           return Promise.all(Object.keys(cacheWorkDirectories).map(function (directory) {
-            if (cacheWorkDirectories[directory] > Date.now() - 3600000 || activeWorkDirectories[directory]) { return; }
+            if (cacheWorkDirectories[directory] > Date.now() - 3600000 || activeWorkDirectories[directory] || !deadTemporaryOwner(directory)) { return; }
             return removeOwnedWorkDirectory(directory).then(function () { delete cacheWorkDirectories[directory]; });
           }));
         }).then(function () {
-          if (total + reservation > cacheMaxBytes) { var error = new Error("CACHE_BUDGET_EXCEEDED"); error.code = "CACHE_BUDGET_EXCEEDED"; throw error; }
+          if (total + reservation > cacheMaxBytes || (layer && cacheLayerBytes[layer] + layerReservation > layerMax[layer])) { var error = new Error("CACHE_BUDGET_EXCEEDED"); error.code = "CACHE_BUDGET_EXCEEDED"; throw error; }
           return cacheTotals();
+        });
         });
       });
     }
@@ -718,7 +938,7 @@
       var inputStat = inputIndex >= 0 && sourceStatCache[args[inputIndex + 1]];
       var estimatedBytes = inputStat ? inputStat.stat.size * 2 + 16 * 1024 * 1024 : 256 * 1024 * 1024;
       var diskLimit = 0;
-      var reservation = Math.min(cacheMaxBytes, isProxy ? Number(cacheSettings.proxyReservationBytes) || Math.max(64 * 1024 * 1024, estimatedBytes) : 8 * 1024 * 1024);
+      var reservation = Math.min(cacheMaxBytes, layerMax[cacheLayer(destination)], isProxy ? Number(cacheSettings.proxyReservationBytes) || Math.max(64 * 1024 * 1024, estimatedBytes) : 8 * 1024 * 1024);
       return checkAvailableSpace().then(function () {
         if (availableSpace !== null) {
           diskLimit = Math.max(0, availableSpace - minimumFreeBytes - cacheTotals().reservedBytes);
@@ -726,7 +946,7 @@
           reservation = Math.min(reservation, diskLimit);
         }
         return cacheTask(function () {
-          return pruneCacheInternal(reservation).then(function () {
+          return pruneCacheInternal(reservation, false, destination).then(function () {
             cacheReservations[temporary] = reservation; activeTemporaryPaths[temporary] = true;
             args.splice(args.length - 1, 0, "-fs", String(reservation));
           });
@@ -768,6 +988,7 @@
     }
 
     function prepare(options) {
+      if (disposed) { return Promise.reject(new Error("MEDIA_SERVICE_CLOSED")); }
       if (mediaToolsPromise && !(options && options.retry && mediaToolsStatus.state !== "checking")) { return mediaToolsPromise; }
       if (options && options.retry && mediaToolsStatus.state === "ready" &&
           (activeFfmpegCount || ffmpegQueue.length || Object.keys(pendingOutputs).length || Object.keys(pendingMetadata).length || Object.keys(pendingSourceStats).length)) {
@@ -816,14 +1037,48 @@
       };
     }
 
-    function whenMediaToolsReady(method, prefix) {
+    function whenMediaToolsReady(method, prefix, kind) {
       return function () {
         var args = arguments;
         var assertCurrent = cancellationGuard(prefix + String(args[0] || ""));
-        return prepare().then(function () {
+        var options = kind === "proxy" ? args[2] || (typeof args[1] === "object" ? args[1] : {}) : args[1] && typeof args[1] === "object" ? args[1] : {};
+        var epoch = backgroundEpochs[args[0]] || 0;
+        var passive = ["poster", "sprite", "still", "waveform"].indexOf(kind) !== -1 && options.purpose !== "offline" && options.purpose !== "foreground";
+        var cancelled = false;
+        var jobKey = kind ? producerKey(kind, args[0], options) : prefix + String(args[0] || "");
+        if (options.profile === "low" || options.profile === "balanced") { jobThreadProfiles[jobKey] = options.profile === "balanced" ? 2 : 1; }
+        assertCurrent = cancellationGuard(jobKey);
+        var durable = options.purpose === "offline" || options.purpose === "foreground";
+        if (durable) { durableSubscribers[args[0]] = (durableSubscribers[args[0]] || 0) + 1; }
+        if (passive) { passiveSubscribers[args[0]] = (passiveSubscribers[args[0]] || 0) + 1; }
+        var rejectAbort;
+        var aborted = new Promise(function (_resolve, reject) { rejectAbort = reject; });
+        function check() { assertCurrent(); if (disposed || cancelled || options.signal && (options.signal.aborted || options.signal.cancelled) || passive && epoch !== (backgroundEpochs[args[0]] || 0)) { throw cancelledError(); } }
+        function abort() { cancelled = true; cancelJobKey(jobKey); if (options.purpose === "offline") { cancelJobKey("offline:metadata:" + args[0]); } rejectAbort(cancelledError()); }
+        if (options.signal && options.signal.addEventListener) { options.signal.addEventListener("abort", abort); }
+        var removeCancel = options.signal && options.signal.onCancel ? options.signal.onCancel(abort) : null;
+        var request = Promise.resolve().then(function () {
+          check();
+          return options.purpose === "offline" ? validateCachedAsset(args[0]) : null;
+        }).then(function () {
+          check();
+          return kind ? cachedPreviewFor(args[0], kind, typeof args[1] === "string" ? args[1] : options.profile) : null;
+        }).then(function (cached) {
+          check();
+          if (cached) { validateSourceInBackground(args[0]); return kind === "metadata" ? cached.metadata : kind === "sprite" ? cached : cached.path; }
+          return prepare().then(function () {
+          check();
           assertCurrent();
           return method.apply(null, args);
-        }, function (error) { assertCurrent(); throw error; });
+          }, function (error) { check(); throw error; });
+        });
+        function cleanup() {
+          if (durable) { durableSubscribers[args[0]] = Math.max(0, (durableSubscribers[args[0]] || 0) - 1); }
+          if (passive) { passiveSubscribers[args[0]] = Math.max(0, (passiveSubscribers[args[0]] || 0) - 1); }
+          if (options.signal && options.signal.removeEventListener) { options.signal.removeEventListener("abort", abort); }
+          if (removeCancel) { removeCancel(); }
+        }
+        return Promise.race([request, aborted]).then(function (result) { cleanup(); check(); return result; }, function (error) { cleanup(); throw error; });
       };
     }
 
@@ -842,8 +1097,7 @@
       var index;
       while (activeFfmpegCount < MAX_FFMPEG_CONCURRENCY && ffmpegQueue.length) {
         index = ffmpegQueue.findIndex(function (candidate) {
-          var backgroundActive = Object.keys(activeFfmpegJobs).some(function (id) { return !/^(preview|audio|capture):/.test(activeFfmpegJobs[id].key); });
-          return /^(preview|audio|capture):/.test(candidate.key) || !backgroundActive;
+          return /^(preview|audio|capture|frame|user-transcode):/.test(candidate.key) || !(activity.scrolling || activity.playing || activity.hidden);
         });
         if (index < 0) { return; }
         job = ffmpegQueue.splice(index, 1)[0];
@@ -891,17 +1145,24 @@
       settleJob(job, job.stopError);
       clearTimeout(job.timeoutTimer);
       job.killTimer = setTimeout(function () {
-        try { if (job.child) { job.child.kill("SIGKILL"); } } catch (ignoreKillError) {}
+        signalJob(job, "SIGKILL");
         releaseJob(job);
       }, terminationGraceMs);
-      try { if (job.child) { job.child.kill("SIGTERM"); } } catch (ignoreTerminateError) {}
+      signalJob(job, "SIGTERM");
+    }
+
+    function signalJob(job, signal) {
+      try {
+        if (job.options.detached && job.child && job.child.pid) { process.kill(-job.child.pid, signal); }
+        else if (job.child) { job.child.kill(signal); }
+      } catch (ignoreSignalError) { try { if (job.child) { job.child.kill(signal); } } catch (ignoreKillError) {} }
     }
 
     function execFileQueued(binary, args, options, jobKey, onOutput, onReaped) {
       return new Promise(function (resolve, reject) {
         var job = { id: nextFfmpegJobId, binary: binary, args: args, options: options, key: jobKey || "derived", onOutput: onOutput, onReaped: onReaped, resolve: resolve, reject: reject, child: null, cancelled: false };
         nextFfmpegJobId += 1;
-        if (/^(preview|audio|capture|user-transcode):/.test(job.key)) { ffmpegQueue.unshift(job); }
+        if (/^(preview|audio|capture|frame|user-transcode):/.test(job.key)) { ffmpegQueue.unshift(job); }
         else { ffmpegQueue.push(job); }
         pumpFfmpegQueue();
       });
@@ -940,12 +1201,18 @@
 
     function cancelPreviewJob(filePath) { cancelJobKey("preview:" + filePath); }
 
-    function prioritizeViewer() { cancelJobPrefix("derived:"); }
+    function prioritizeViewer() { Object.keys(passiveSubscribers).forEach(function (filePath) { if (passiveSubscribers[filePath]) { cancelBackgroundFor(filePath); } }); }
+    function setActivity(value) {
+      ["scrolling", "playing", "hidden"].forEach(function (key) { if (value && typeof value[key] === "boolean") { activity[key] = value[key]; } });
+      pumpFfmpegQueue(); return getResourceStatus();
+    }
+    function cancelBackgroundFor(filePath) { backgroundEpochs[filePath] = (backgroundEpochs[filePath] || 0) + 1; if (!durableSubscribers[filePath]) { cancelJobKey("derived:" + filePath); } }
+    function getResourceStatus() { return { active: activeFfmpegCount, queued: ffmpegQueue.length, maxActive: MAX_FFMPEG_CONCURRENCY, decoderThreads: decoderThreads, resourceProfile: decoderThreads === 2 ? "balanced" : "low", backgroundPaused: activity.scrolling || activity.playing || activity.hidden, activity: Object.assign({}, activity), globalLock: path.join(lockDirectory, "heavy.lock") }; }
 
     function cacheTemporaryPath(destination) {
       var extension = path.extname(destination);
       var stem = extension ? destination.slice(0, -extension.length) : destination;
-      var temporary = stem + "." + process.pid + "-" + nextTemporaryOutputId + ".part" + extension;
+      var temporary = stem + "." + process.pid + "-" + serviceToken + "-" + nextTemporaryOutputId + ".part" + extension;
       nextTemporaryOutputId += 1;
       return temporary;
     }
@@ -956,7 +1223,7 @@
         return cacheCall("stat", [temporary]).then(function (stat) {
           delete cacheReservations[temporary];
           if (limit && stat.size >= limit * .98) { throw new Error("CACHE_OUTPUT_LIMIT"); }
-          return pruneCacheInternal(stat.size);
+          return pruneCacheInternal(usableCacheFile(destination) ? 0 : stat.size, false, destination);
         }).then(function () {
           return cacheCall("link", [temporary, destination]).catch(function (error) {
             if (error.code !== "EEXIST" || !usableCacheFile(destination)) { throw error; }
@@ -973,10 +1240,17 @@
       });
     }
 
-    function runFfmpeg(args, destination, timeout, jobKey, onOutput) {
+    function runFfmpeg(args, destination, timeout, jobKey, onOutput, spriteSpec) {
       var isCacheOutput = destination.indexOf(cacheRoot + path.sep) === 0;
       var actualDestination = isCacheOutput ? cacheTemporaryPath(destination) : destination;
-      var actualArgs = args.slice();
+      var actualArgs = [];
+      var threads = jobThreadProfiles[jobKey] || decoderThreads;
+      args.forEach(function (arg, index) {
+        if (arg === "-i") { actualArgs.push("-threads", String(threads)); }
+        actualArgs.push(arg === "0" && args[index - 1] === "-threads" ? String(threads) : arg);
+      });
+      actualArgs.unshift("-filter_threads", "1", "-filter_complex_threads", "1");
+      actualArgs.splice(actualArgs.length - 1, 0, "-threads", String(threads));
       var outputIndex;
       var assertCurrent = cancellationGuard(jobKey);
       if (isCacheOutput) {
@@ -987,14 +1261,20 @@
         return isCacheOutput ? prepareCacheOutput(actualDestination, destination, actualArgs) : null;
       }).then(function () {
         assertCurrent();
-        return execFileQueued(findBinary("ffmpeg"), actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput, function () { removeFailedCacheFile(actualDestination); });
+        var configuration = { sprite: spriteSpec || null, budget: isCacheOutput ? { root: cacheRoot, maxBytes: cacheMaxBytes, images: layerMax.images, proxies: layerMax.proxies } : null };
+        var workerArgs = [workerPath, path.join(lockDirectory, "heavy.lock"), findBinary("ffmpeg"), actualDestination, isCacheOutput ? destination : "", String(cacheReservations[actualDestination] || 0), /^(preview|audio|capture|frame|user-transcode):/.test(jobKey) ? "0" : "1", JSON.stringify(configuration)].concat(actualArgs);
+        return execFileQueued("/usr/bin/perl", workerArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024, detached: true }, jobKey, onOutput, function () { removeFailedCacheFile(actualDestination); });
       }).then(function (result) {
+        if (String(result.stdout || "").indexOf("LKFB_CACHE_HIT") !== -1 && usableCacheFile(destination)) { delete cacheReservations[actualDestination]; delete activeTemporaryPaths[actualDestination]; return recordCacheFile(destination).then(function () { return destination; }); }
         if (!usableCacheFile(actualDestination)) { throw new Error(result.stderr || "OUTPUT_NOT_CREATED"); }
         return isCacheOutput ? publishCacheOutput(actualDestination, destination) : destination;
       }).catch(function (error) {
         delete cacheReservations[actualDestination]; delete activeTemporaryPaths[actualDestination];
         availableSpaceAt = 0;
-        removeFailedCacheFile(actualDestination); throw error;
+        removeFailedCacheFile(actualDestination);
+        var workerError = String(error && error.message || "").match(/\b(OUTPUT_NOT_CREATED|CACHE_[A-Z_]+|MEDIA_LOCK_[A-Z_]+|MEDIA_PROCESS_GROUP|JOB_CANCELLED)\b/);
+        if (workerError) { error = new Error(workerError[1]); error.code = workerError[1]; }
+        throw error;
       });
     }
 
@@ -1026,10 +1306,12 @@
       };
     }
 
-    function previewProxyFor(filePath, profile) {
+    function previewProxyFor(filePath, profile, options) {
+      if (profile && typeof profile === "object") { options = profile; profile = options.profile; }
       var config = profileConfig(profile);
       var ext = String(path.extname(filePath)).toLowerCase();
-      var assertCurrent = cancellationGuard("preview:" + filePath);
+      var assertCurrent = producerGuard("proxy", filePath, options);
+      var jobKey = producerKey("proxy", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key;
         var destination;
@@ -1040,7 +1322,7 @@
         if (config.name === "source" && [".mp4", ".m4v", ".webm"].indexOf(ext) !== -1) { return filePath; }
         key = cacheKey(filePath, stat) + "-v3-" + config.name;
         ensureDirectories(); destination = path.join(proxyDirectory, key + ".mp4");
-        if (usableCacheFile(destination)) { return destination; }
+        if (usableCacheFile(destination)) { return recordArtifact(filePath, stat, "proxy", destination, config.name); }
         if (config.scale) {
           var dimensions = config.scale.split(":");
           filter = "scale='min(" + dimensions[0] + ",iw)':'min(" + dimensions[1] + ",ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p";
@@ -1048,11 +1330,11 @@
         baseArgs = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-vf", filter, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-threads", "0", "-y", destination];
         hardwareArgs = ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-i", filePath, "-vf", filter, "-c:v", "h264_videotoolbox", "-b:v", config.bitrate, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-y", destination];
         if (pendingOutputs[destination]) { return pendingOutputs[destination]; }
-        cancelJobKey("preview:" + filePath);
-        return outputOnce(destination, function () { return runFfmpeg(hardwareArgs, destination, 180000, "preview:" + filePath).catch(function (error) {
+        return outputOnce(destination, function () { return runFfmpeg(hardwareArgs, destination, 600000, jobKey).catch(function (error) {
           if (terminalMediaError(error)) { throw error; }
-          return runFfmpeg(baseArgs, destination, 180000, "preview:" + filePath);
-        }); });
+          assertCurrent();
+          return runFfmpeg(baseArgs, destination, 600000, jobKey);
+        }); }).then(function (output) { return recordArtifact(filePath, stat, "proxy", output, config.name); });
       });
     }
 
@@ -1143,7 +1425,7 @@
     function transcodeTo(filePath, destination, profile, onProgress) {
       var config = profileConfig(profile);
       var filter = config.scale ? "scale=" + config.scale + ":force_original_aspect_ratio=decrease,pad=" + config.scale + ":(ow-iw)/2:(oh-ih)/2,format=yuv420p" : "format=yuv420p";
-      return metadataFor(filePath).then(function (metadata) {
+      return metadataFor(filePath, { purpose: "foreground" }).then(function (metadata) {
         var readProgress = progressReader(Number(metadata.duration) || 0, onProgress);
         var progressArgs = ["-progress", "pipe:1", "-nostats"];
         var hardware = ["-hide_banner", "-loglevel", "error", "-hwaccel", "videotoolbox", "-i", filePath, "-vf", filter, "-c:v", "h264_videotoolbox", "-b:v", config.bitrate, "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"].concat(progressArgs, ["-y", destination]);
@@ -1193,27 +1475,36 @@
     }
 
     function cacheKey(filePath, stat) {
-      return crypto.createHash("sha1").update([filePath, stat.size, stat.mtimeMs || stat.mtime && stat.mtime.getTime(), stat.ctimeMs || stat.ctime && stat.ctime.getTime(), stat.ino, stat.dev].join(":")).digest("hex");
+      return crypto.createHash("sha1").update(path.resolve(filePath) + ":" + sourceSignature(stat)).digest("hex");
     }
 
-    function metadataFor(filePath) {
-      var assertCurrent = cancellationGuard("metadata:" + filePath);
+    function legacyCacheKey(filePath, stat) { return crypto.createHash("sha1").update([filePath, stat.size, stat.mtimeMs || stat.mtime && stat.mtime.getTime(), stat.ctimeMs || stat.ctime && stat.ctime.getTime(), stat.ino, stat.dev].join(":")).digest("hex"); }
+    function producerKey(kind, filePath, options) {
+      return options && options.purpose === "offline" ? "offline:" + kind + ":" + filePath : options && options.purpose === "foreground" ? "preview:" + filePath : (kind === "metadata" ? "metadata:" : kind === "proxy" ? "preview:" : "derived:") + filePath;
+    }
+    function producerGuard(kind, filePath, options) {
+      var guard = cancellationGuard(producerKey(kind, filePath, options));
+      return function () { guard(); if (options && options.signal && (options.signal.aborted || options.signal.cancelled)) { throw cancelledError(); } };
+    }
+
+    function metadataFor(filePath, options) {
+      var assertCurrent = producerGuard("metadata", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var cacheFile;
         var ffprobe;
         assertCurrent();
-        if (memoryMetadata[key]) { return memoryMetadata[key]; }
+        if (memoryMetadata[key]) { return recordArtifact(filePath, stat, "metadata", memoryMetadata[key]); }
         if (pendingMetadata[key]) { return pendingMetadata[key]; }
         /* v3 invalidates the old cache because container labels are now
            extension-aware (an .mp4 must not inherit QuickTime/MOV). */
         ensureDirectories(); cacheFile = path.join(metadataDirectory, key + "-v3.json");
         if (fs.existsSync(cacheFile)) {
-          try { memoryMetadata[key] = JSON.parse(fs.readFileSync(cacheFile, "utf8")); return memoryMetadata[key]; } catch (ignoreCacheError) {}
+          try { memoryMetadata[key] = JSON.parse(fs.readFileSync(cacheFile, "utf8")); return recordArtifact(filePath, stat, "metadata", memoryMetadata[key]); } catch (ignoreCacheError) {}
         }
         ffprobe = findBinary("ffprobe");
         if (!ffprobe) { throw new Error("FFPROBE_NOT_FOUND"); }
-        pendingMetadata[key] = execFileQueued(ffprobe, ["-v", "error", "-show_format", "-show_streams", "-of", "json", filePath], { timeout: 30000, maxBuffer: 8 * 1024 * 1024 }, "metadata:" + filePath).then(function (result) {
+        pendingMetadata[key] = execFileQueued(ffprobe, ["-v", "error", "-threads", "1", "-show_format", "-show_streams", "-of", "json", filePath], { timeout: 30000, maxBuffer: 8 * 1024 * 1024 }, producerKey("metadata", filePath, options)).then(function (result) {
           var normalized = normalizeProbe(JSON.parse(result.stdout), stat, filePath);
           var serialized = JSON.stringify(normalized);
           memoryMetadata[key] = normalized;
@@ -1221,27 +1512,27 @@
             return pruneCacheInternal(Buffer.byteLength(serialized, "utf8")).then(function () {
               return cacheCall("writeFile", [cacheFile, serialized, "utf8"]);
             }).then(function () { return recordCacheFile(cacheFile); });
-          }).then(function () { return normalized; }, function () { return normalized; });
+          }).then(function () { return recordArtifact(filePath, stat, "metadata", normalized); }, function () { return normalized; });
         }).then(function (result) { delete pendingMetadata[key]; return result; }, function (error) { delete pendingMetadata[key]; throw error; });
         return pendingMetadata[key];
       });
     }
 
-    function generateWaveform(filePath) {
-      var assertCurrent = cancellationGuard("derived:" + filePath);
+    function generateWaveform(filePath, options) {
+      var assertCurrent = producerGuard("waveform", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
         var args;
         assertCurrent();
         ensureDirectories(); destination = path.join(waveformDirectory, key + "-v3.png");
-        if (usableCacheFile(destination)) { return destination; }
+        if (usableCacheFile(destination)) { return recordArtifact(filePath, stat, "waveform", destination); }
         args = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=600x120:colors=0x62d684:scale=sqrt:draw=full[wave]", "-map", "[wave]", "-frames:v", "1", "-an", "-sn", "-dn", "-y", destination];
-        return outputOnce(destination, function () { return runFfmpeg(args, destination, 45000, "derived:" + destination); });
+        return outputOnce(destination, function () { return runFfmpeg(args, destination, 45000, producerKey("waveform", filePath, options)); }).then(function (output) { return recordArtifact(filePath, stat, "waveform", output); });
       });
     }
 
-    function generatePosterFrame(filePath, destination, seconds, videoStreamIndex, rejectBlack) {
+    function generatePosterFrame(filePath, destination, seconds, videoStreamIndex, rejectBlack, jobKey) {
       var filter = "scale=480:270:force_original_aspect_ratio=increase,crop=480:270,setsar=1";
       var args;
       if (rejectBlack) {
@@ -1255,18 +1546,21 @@
         "-map", "0:v:" + Math.max(0, Number(videoStreamIndex) || 0), "-frames:v", "1", "-vf", filter,
         "-an", "-sn", "-dn", "-y", destination
       ];
-      return runFfmpeg(args, destination, 45000, "derived:" + destination);
+      return runFfmpeg(args, destination, 15000, jobKey || "derived:" + filePath);
     }
 
-    function posterFor(filePath) {
-      var assertCurrent = cancellationGuard("derived:" + filePath);
+    function posterFor(filePath, options) {
+      var assertCurrent = producerGuard("poster", filePath, options);
+      var jobKey = producerKey("poster", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
         assertCurrent();
         ensureDirectories(); destination = path.join(posterDirectory, key + "-v4.png");
-        if (usableCacheFile(destination)) { return destination; }
-        return metadataFor(filePath).then(function (metadata) {
+        if (usableCacheFile(destination)) { return recordArtifact(filePath, stat, "poster", destination); }
+        var legacy = path.join(posterDirectory, legacyCacheKey(filePath, stat) + "-v4.png");
+        if (usableCacheFile(legacy)) { return recordArtifact(filePath, stat, "poster", legacy); }
+        return metadataFor(filePath, options).then(function (metadata) {
           var times = posterSampleTimes(metadata.duration);
           var videoStreamIndex = numberOrNull(metadata.videoStreamIndex);
           var lastError = null;
@@ -1275,7 +1569,8 @@
 
           function tryCandidate(index) {
             if (index >= times.length) { return Promise.reject(lastError || new Error("POSTER_FRAME_NOT_FOUND")); }
-            return generatePosterFrame(filePath, destination, times[index], videoStreamIndex, true).catch(function (error) {
+            assertCurrent();
+            return generatePosterFrame(filePath, destination, times[index], videoStreamIndex, true, jobKey).catch(function (error) {
               if (terminalMediaError(error)) { throw error; }
               lastError = error;
               if (error && error.message === "OUTPUT_NOT_CREATED") { return tryCandidate(index + 1); }
@@ -1290,40 +1585,30 @@
               finalTime = times[times.length - 1] || 0;
               /* A genuinely dark source still deserves a thumbnail. After all
                  representative candidates are rejected, keep its last frame. */
-              return generatePosterFrame(filePath, destination, finalTime, videoStreamIndex, false).catch(function (directError) {
-                if (terminalMediaError(directError)) { throw directError; }
-                return previewProxyFor(filePath, "720").then(function (proxyPath) {
-                  return generatePosterFrame(proxyPath, destination, finalTime, 0, false);
-                }).catch(function (proxyError) {
-                  if (terminalMediaError(proxyError)) { throw proxyError; }
-                  return frameFor(filePath, finalTime, 480, 270).catch(function (frameError) {
-                    if (terminalMediaError(frameError)) { throw frameError; }
-                    throw directError;
-                  });
-                });
-              });
+              assertCurrent();
+              return generatePosterFrame(filePath, destination, finalTime, videoStreamIndex, false, jobKey);
             });
-          });
+          }).then(function (output) { return recordArtifact(filePath, stat, "poster", output); });
         });
       });
     }
 
-    function previewStillFor(filePath) {
-      var assertCurrent = cancellationGuard("derived:" + filePath);
+    function previewStillFor(filePath, options) {
+      var assertCurrent = producerGuard("still", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat) + "-ql-v1";
         var destination = path.join(stillPreviewDirectory, key + ".png");
         var extension = String(path.extname(filePath)).toLowerCase();
         assertCurrent();
-        if (usableCacheFile(destination)) { return destination; }
+        if (usableCacheFile(destination)) { return recordArtifact(filePath, stat, "still", destination); }
         if (extension === ".psd" || extension === ".psb") {
-          return outputOnce(destination, function () { return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, "derived:" + destination); });
+          return outputOnce(destination, function () { return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, producerKey("still", filePath, options)); }).then(function (output) { return recordArtifact(filePath, stat, "still", output); });
         }
         return outputOnce(destination, function () {
           var temporary = cacheTemporaryPath(destination);
           var workDirectory = path.join(stillPreviewDirectory, "." + key + "-" + process.pid + "-" + nextTemporaryOutputId);
           var pdfOutput = path.join(workDirectory, "render.png");
-          var jobKey = "derived:" + destination;
+          var jobKey = producerKey("still", filePath, options);
           var pdfRenderer = ["/opt/homebrew/bin/pdftoppm", "/usr/local/bin/pdftoppm"].filter(function (candidate) { return fs.existsSync(candidate); })[0];
           function quickLookFallback(error) {
             if (terminalMediaError(error)) { throw error; }
@@ -1357,7 +1642,7 @@
           }, function (error) {
             return cleanup().then(function () { throw error; });
           });
-        });
+        }).then(function (output) { return recordArtifact(filePath, stat, "still", output); });
       });
     }
 
@@ -1368,63 +1653,39 @@
           var candidate = path.join(directory, name);
           return cacheCall("lstat", [candidate]).then(function (stat) {
             if (stat.isDirectory()) { return; }
-            return cacheCall("unlink", [candidate]).then(function () { delete cacheRecords[candidate]; });
+            return cacheCall("unlink", [candidate]).then(function () { forgetCacheFile(candidate); });
           }).catch(function () {});
         }));
       }).then(function () { return cacheCall("rmdir", [directory]); }).catch(function () {});
     }
 
-    function spriteFor(filePath) {
-      var assertCurrent = cancellationGuard("derived:" + filePath);
+    function spriteRecord(destination, times, approximate) {
+      return { path: destination, frames: SPRITE_FRAMES, frameCount: SPRITE_FRAMES, columns: SPRITE_COLUMNS, rows: SPRITE_ROWS, cellWidth: 240, cellHeight: 136, width: 960, height: 408, sampleTimes: times, approximateTimes: !!approximate };
+    }
+    function spriteFor(filePath, options) {
+      var assertCurrent = producerGuard("sprite", filePath, options);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
         assertCurrent();
-        ensureDirectories(); destination = path.join(spriteDirectory, key + "-v4.jpg");
-        return metadataFor(filePath).then(function (metadata) {
+        ensureDirectories(); destination = path.join(spriteDirectory, key + "-v5.jpg");
+        return metadataFor(filePath, options).then(function (metadata) {
+          var times = spriteSampleTimes(metadata.duration, SPRITE_FRAMES, metadata.frameRate);
+          var legacy = path.join(spriteDirectory, legacyCacheKey(filePath, stat) + "-v4.jpg");
           assertCurrent();
-          if (usableCacheFile(destination)) {
-            return { path: destination, frames: SPRITE_FRAMES, frameCount: SPRITE_FRAMES, columns: SPRITE_COLUMNS, rows: SPRITE_ROWS, cellWidth: 240, cellHeight: 136, width: 960, height: 408, sampleTimes: spriteSampleTimes(metadata.duration, SPRITE_FRAMES, metadata.frameRate) };
+          function completed() {
+            return cacheCall("readFile", [destination + ".json", "utf8"]).then(function (data) {
+              var samples = JSON.parse(data).sampleTimes;
+              if (!Array.isArray(samples) || samples.length !== SPRITE_FRAMES || samples.some(function (time) { return !isFinite(time) || time < 0; })) { throw new Error("SPRITE_TIMESTAMP_UNAVAILABLE"); }
+              return recordArtifact(filePath, stat, "sprite", spriteRecord(destination, samples));
+            });
           }
-        var times = spriteSampleTimes(metadata.duration, SPRITE_FRAMES, metadata.frameRate);
-        var videoStreamIndex = numberOrNull(metadata.videoStreamIndex);
-        var args = ["-hide_banner", "-loglevel", "error"];
-        var filters = [];
-        var labels = [];
-        var layout = [];
-        var i;
-        var column;
-        var row;
-        videoStreamIndex = videoStreamIndex === null ? 0 : videoStreamIndex;
-        for (i = 0; i < times.length; i += 1) {
-          args.push("-ss", times[i].toFixed(6), "-i", filePath);
-          filters.push("[" + i + ":v:" + videoStreamIndex + "]scale=240:136:force_original_aspect_ratio=increase,crop=240:136,setsar=1[v" + i + "]");
-          labels.push("[v" + i + "]");
-          column = i % SPRITE_COLUMNS;
-          row = Math.floor(i / SPRITE_COLUMNS);
-          layout.push((column * 240) + "_" + (row * 136));
-        }
-        filters.push(labels.join("") + "xstack=inputs=" + SPRITE_FRAMES + ":layout=" + layout.join("|") + ":fill=black,format=yuvj420p[sheet]");
-        args.push(
-          "-filter_complex", filters.join(";"),
-          "-map", "[sheet]", "-frames:v", "1", "-q:v", "4",
-          "-an", "-sn", "-dn", "-y", destination
-        );
-        return outputOnce(destination, function () { return runFfmpeg(args, destination, 120000, "derived:" + destination).then(function () {
-          return {
-              path: destination,
-              frames: SPRITE_FRAMES,
-              frameCount: SPRITE_FRAMES,
-              columns: SPRITE_COLUMNS,
-              rows: SPRITE_ROWS,
-              cellWidth: 240,
-              cellHeight: 136,
-              width: 960,
-              height: 408,
-              sampleTimes: times
-            };
-        });
-        });
+          var work = path.join(spriteDirectory, ".sprite-" + process.pid + "-" + nextTemporaryOutputId + "-" + crypto.randomBytes(6).toString("hex"));
+          var spec = { source: filePath, times: times, startTime: Number(metadata.startTime) || 0, stream: Math.max(0, Number(metadata.videoStreamIndex) || 0), work: work, threads: options && options.profile === "balanced" ? 2 : decoderThreads };
+          function generate() { return outputOnce(destination, function () { return runFfmpeg(["-i", filePath, "-y", destination], destination, 120000, producerKey("sprite", filePath, options), null, spec).then(completed); }); }
+          if (usableCacheFile(destination)) { return completed().catch(generate); }
+          if (usableCacheFile(legacy)) { return recordArtifact(filePath, stat, "sprite", spriteRecord(legacy, times, true)); }
+          return generate();
         });
       });
     }
@@ -1432,15 +1693,28 @@
     ensureDirectories();
     pruneCache().catch(function () {});
 
+    function dispose() {
+      disposed = true; activity.hidden = true;
+      Object.keys(sourceValidations).forEach(function (key) { clearTimeout(sourceValidations[key]); delete sourceValidations[key]; });
+      cancelJobPrefix("");
+      cacheRetains = {};
+      return persistRetains().then(function () {
+        return new Promise(function (resolve) {
+          function reap() { if (!activeFfmpegCount) { resolve(); } else { setTimeout(reap, 20); } }
+          reap();
+        });
+      });
+    }
+
     return {
       cacheRoot: cacheRoot,
       captureDirectory: captureDirectory,
-      metadataFor: whenMediaToolsReady(metadataFor, "metadata:"),
-      posterFor: whenMediaToolsReady(posterFor, "derived:"),
-      waveformFor: whenMediaToolsReady(generateWaveform, "derived:"),
-      previewStillFor: whenMediaToolsReady(previewStillFor, "derived:"),
-      spriteFor: whenMediaToolsReady(spriteFor, "derived:"),
-      previewProxyFor: whenMediaToolsReady(previewProxyFor, "preview:"),
+      metadataFor: whenMediaToolsReady(metadataFor, "metadata:", "metadata"),
+      posterFor: whenMediaToolsReady(posterFor, "derived:", "poster"),
+      waveformFor: whenMediaToolsReady(generateWaveform, "derived:", "waveform"),
+      previewStillFor: whenMediaToolsReady(previewStillFor, "derived:", "still"),
+      spriteFor: whenMediaToolsReady(spriteFor, "derived:", "sprite"),
+      previewProxyFor: whenMediaToolsReady(previewProxyFor, "preview:", "proxy"),
       audioProxyFor: whenMediaToolsReady(audioProxyFor, "audio:"),
       frameFor: whenMediaToolsReady(frameFor, "frame:"),
       captureFrameForProject: whenMediaToolsReady(captureFrameForProject, "capture:"),
@@ -1450,13 +1724,21 @@
       cancelViewerJobs: cancelViewerJobs,
       cancelPreviewJob: cancelPreviewJob,
       prioritizeViewer: prioritizeViewer,
+      cachedPreviewFor: cachedPreviewFor,
+      validateCachedAsset: validateCachedAsset,
+      getCachedAsset: loadAsset,
+      setActivity: setActivity,
+      cancelBackgroundFor: cancelBackgroundFor,
+      getResourceStatus: getResourceStatus,
+      pinCachedAsset: pinCachedAsset,
       retainCacheFile: retainCacheFile,
       releaseCacheFile: releaseCacheFile,
       pruneCache: pruneCache,
       cacheStats: cacheTotals,
       findBinary: findBinary,
       prepare: prepare,
-      getStatus: getStatus
+      getStatus: getStatus,
+      dispose: dispose
     };
   }
 

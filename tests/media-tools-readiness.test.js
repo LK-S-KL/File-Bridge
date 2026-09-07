@@ -160,7 +160,7 @@ test("all media producers await readiness; failed detection cannot create media 
       f.service.audioProxyFor(source), f.service.frameFor(source, 0),
       f.service.captureFrameForProject(source, 0), f.service.transcodeTo(source, destination, "720")
     ].map(request => request.then(() => null, error => error));
-    await Promise.resolve();
+    while (!rejectCheck) { await new Promise(resolve => setImmediate(resolve)); }
     rejectCheck(new Error("missing binaries"));
     const results = await Promise.all(requests);
     assert.ok(results.every(error => error && error.code === "MEDIA_TOOLS_UNAVAILABLE"));
@@ -177,7 +177,7 @@ test("previews cancelled during dependency resolution never restart when detecti
     const preview = f.service.previewProxyFor(source, "720").catch(error => error);
     const audio = f.service.audioProxyFor(source).catch(error => error);
     const poster = f.service.posterFor(source).catch(error => error);
-    await Promise.resolve();
+    while (!resolveCheck) { await new Promise(resolve => setImmediate(resolve)); }
     f.service.cancelViewerJobs(source);
     f.service.prioritizeViewer();
     resolveCheck(pair());
@@ -201,7 +201,7 @@ test("cancelling while the source stat is pending also prevents a late media job
     fs.writeFileSync(sourcePath, "media");
     const request = f.service.previewProxyFor(sourcePath, "720").catch(error => error);
     await f.service.prepare();
-    await new Promise(resolve => setImmediate(resolve));
+    while (!statDone) { await new Promise(resolve => setImmediate(resolve)); }
     assert.equal(typeof statDone, "function");
     f.service.cancelViewerJobs(sourcePath);
     statDone(null, fs.statSync(sourcePath));

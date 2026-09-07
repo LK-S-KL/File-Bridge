@@ -47,7 +47,8 @@ test("plugin folders render as a collapsible hierarchy with a minimal back contr
   assert.match(css, /\.folder-empty-icon\s*\{/);
   assert.match(main, /parentId\s*=\s*pluginFolderParentId\(pluginFolder\)/);
   assert.match(main, /if \(!applyPluginFolderResult\(result\)\) \{ return false; \}\s*rebuildAssetMap\(\);/);
-  assert.match(main, /item\.type\s*===\s*"audio"[\s\S]*?waveformFor\(item\.path\)/);
+  assert.match(main, /requestVisual\(item, tile, 0, generation\)/);
+  assert.match(main, /asset\.type\s*===\s*"audio"[\s\S]*?waveformFor\(asset\.path\)/);
 });
 
 test("virtual files support copy, cut, paste, and root placement persistence", () => {

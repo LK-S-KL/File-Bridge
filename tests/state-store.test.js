@@ -55,6 +55,22 @@ test("migrates the original three-position zoom preference to pixels", () => {
   assert.equal(stateStoreModule.normalize({ preferences: { zoom: 2 } }).preferences.zoom, 176);
 });
 
+test("defaults and normalizes offline preview cache preferences", () => {
+  const defaults = stateStoreModule.defaults().preferences;
+  assert.equal(defaults.previewCacheRoot, "");
+  assert.equal(defaults.previewCacheMaxGiB, 12);
+  assert.equal(defaults.previewPerformance, "low");
+  const preferences = stateStoreModule.normalize({ preferences: { previewCacheRoot: "/Volumes/Preview SSD", previewCacheMaxGiB: 256, previewPerformance: "balanced" } }).preferences;
+  assert.equal(preferences.previewCacheRoot, "/Volumes/Preview SSD");
+  assert.equal(preferences.previewCacheMaxGiB, 128);
+  assert.equal(preferences.previewPerformance, "balanced");
+  assert.equal(stateStoreModule.normalize({ preferences: { previewCacheMaxGiB: -1 } }).preferences.previewCacheMaxGiB, 2);
+  const invalid = stateStoreModule.normalize({ preferences: { previewCacheRoot: {}, previewCacheMaxGiB: "bad", previewPerformance: "maximum" } }).preferences;
+  assert.equal(invalid.previewCacheRoot, "");
+  assert.equal(invalid.previewCacheMaxGiB, 12);
+  assert.equal(invalid.previewPerformance, "low");
+});
+
 test("recovers safely from a corrupt state file", () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-state-corrupt-"));
   const store = stateStoreModule.create({ fs, path, os: { homedir: () => fixture } });
