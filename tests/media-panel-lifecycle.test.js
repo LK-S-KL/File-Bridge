@@ -5,6 +5,17 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../extension/js/main.js'),'utf8');
 function fn(name){const start=source.indexOf('  function '+name+'(');let end=source.indexOf('\n  function ',start+1);return source.slice(start,end);}
 
+test('startup waits for media dependency validation before showing an error',async()=>{
+  let rejectReady;
+  const notices=[];
+  const context={mediaTools:{prepare:()=>new Promise((_resolve,reject)=>{rejectReady=reject;})},showNotice:(...args)=>notices.push(args),friendlyError:error=>error.message};
+  vm.createContext(context);vm.runInContext(fn('initializeMediaTools'),context);
+  context.initializeMediaTools();
+  assert.equal(notices.length,0);
+  rejectReady(new Error('reinstall media tools'));await Promise.resolve();
+  assert.deepEqual(notices,[['reinstall media tools',true,0]]);
+});
+
 test('no decoded video frame triggers proxy; stale playback cannot revive itself',()=>{
   let pending, fallbacks=0, stopped=0;
   const media={getAttribute:()=>null};

@@ -8,6 +8,12 @@ const test = require("node:test");
 
 const mediaTools = require("../extension/js/media-tools.js");
 
+test("short low-frame-rate clips keep every sprite sample before the last decodable frame", () => {
+  assert.ok(mediaTools.spriteSampleTimes(1, 12, 12).every(time => time <= 1 - 2 / 12));
+  assert.deepEqual(mediaTools.spriteSampleTimes(0.04, 12, 25), Array(12).fill(0));
+  assert.ok(mediaTools.spriteSampleTimes(1, 12).every(time => time <= 0.8));
+});
+
 function fixtureStat() {
   return {
     size: 111562500,
@@ -198,7 +204,7 @@ test("uses progressively later representative times for poster frames", () => {
 
 test("reports missing NAS media asynchronously instead of throwing on the UI thread", async () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "fnos-media-async-error-"));
-  const service = mediaTools.create({ fs, path, os: { homedir: () => fixture }, crypto, childProcess });
+  const service = mediaTools.create({ fs, path, os: { homedir: () => fixture }, crypto, childProcess, resolveMediaTools: () => ({ ok: true, source: "system", architecture: "arm64", ffmpeg: "/test/bin/ffmpeg", ffprobe: "/test/bin/ffprobe" }) });
   try {
     const request = service.metadataFor(path.join(fixture, "offline.mov"));
     assert.equal(typeof request.then, "function");
@@ -223,6 +229,7 @@ test("probes media and creates a cached sprite and waveform without changing the
     crypto,
     childProcess
   });
+  await service.prepare().catch(() => {});
   const ffmpeg = service.findBinary("ffmpeg");
   const ffprobe = service.findBinary("ffprobe");
 

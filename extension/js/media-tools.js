@@ -400,14 +400,17 @@
     return Math.round(value / 1000) + " kb/s";
   }
 
-  function spriteSampleTimes(duration, frameCount) {
+  function spriteSampleTimes(duration, frameCount, frameRate) {
     var seconds = Math.max(numberOrNull(duration) || 0, 0.001);
+    var rate = Math.max(numberOrNull(frameRate) || 10, 0.001);
+    // Duration is the end of the last frame, not its timestamp; leave a frame margin.
+    var latest = Math.max(0, seconds - Math.min(seconds, 2 / rate));
     var start = seconds * 0.04;
     var span = seconds * 0.92;
     var times = [];
     var i;
     for (i = 0; i < frameCount; i += 1) {
-      times.push(Math.max(0, Math.min(seconds - 0.001, start + span * ((i + 0.5) / frameCount))));
+      times.push(Math.max(0, Math.min(latest, start + span * ((i + 0.5) / frameCount))));
     }
     return times;
   }
@@ -465,6 +468,10 @@
     var os = runtime.os;
     var crypto = runtime.crypto;
     var childProcess = runtime.childProcess;
+    var extensionRoot = runtime.extensionRoot || (typeof __dirname === "string" ? path.resolve(__dirname, "..") : "");
+    var mediaToolsPromise = null;
+    var mediaToolsStatus = { state: "idle", source: null, architecture: null, error: null };
+    var selectedMediaTools = null;
     var cacheRoot = path.join(os.homedir(), "Library", "Caches", "com.fnnas.fnosbridge.mvp");
     var metadataDirectory = path.join(cacheRoot, "metadata");
     var posterDirectory = path.join(cacheRoot, "posters");
@@ -727,23 +734,97 @@
       });
     }
 
-    function findBinary(name) {
-      var candidates = name === "ffprobe" ? [
-        "/opt/homebrew/bin/ffprobe",
-        "/usr/local/bin/ffprobe",
-        path.join(os.homedir(), ".local", "bin", "ffprobe")
-      ] : [
-        path.join(os.homedir(), ".local", "bin", "ffmpeg"),
-        "/opt/homebrew/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg"
-      ];
-      var i;
-      for (i = 0; i < candidates.length; i += 1) {
-        if (fs.existsSync(candidates[i])) {
-          return candidates[i];
+    function unavailableTools(details) {
+      var error = new Error(details && details.message || "媒体组件无法运行。请重新运行安装包中的安装程序，然后重新打开插件；仍有问题时请查看安装说明的故障排查。");
+      error.code = "MEDIA_TOOLS_UNAVAILABLE";
+      error.attempts = details && Array.isArray(details.attempts) ? details.attempts : [];
+      return error;
+    }
+
+    function resolveMediaTools() {
+      if (typeof runtime.resolveMediaTools === "function") { return runtime.resolveMediaTools({ extensionRoot: extensionRoot, home: os.homedir() }); }
+      return new Promise(function (resolve, reject) {
+        var child = null;
+        var settled = false;
+        var timeout = setTimeout(function () {
+          if (settled) { return; }
+          settled = true;
+          try { if (child) { child.kill("SIGKILL"); } } catch (ignoreKillError) {}
+          reject(unavailableTools({ message: "媒体组件检查超时。请重新运行安装程序，并查看安装说明中的故障排查。" }));
+        }, Number(runtime.mediaToolsTimeoutMs) || 35000);
+        function completed(error, stdout) {
+          var result;
+          if (settled) { return; }
+          settled = true; clearTimeout(timeout);
+          try { result = JSON.parse(String(stdout || "")); }
+          catch (parseError) { reject(unavailableTools()); return; }
+          if (error || !result || !result.ok) { reject(unavailableTools(result)); return; }
+          resolve(result);
         }
+        try {
+          child = childProcess.execFile("/usr/bin/perl", [path.join(extensionRoot, "js", "resolve-media-tools.pl"), "--root", extensionRoot, "--home", os.homedir()], { timeout: 35000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024, encoding: "utf8" }, completed);
+        } catch (spawnError) { completed(spawnError, ""); }
+      });
+    }
+
+    function prepare(options) {
+      if (mediaToolsPromise && !(options && options.retry && mediaToolsStatus.state !== "checking")) { return mediaToolsPromise; }
+      if (options && options.retry && mediaToolsStatus.state === "ready" &&
+          (activeFfmpegCount || ffmpegQueue.length || Object.keys(pendingOutputs).length || Object.keys(pendingMetadata).length || Object.keys(pendingSourceStats).length)) {
+        var busy = new Error("媒体任务正在运行，请等待完成后再重新检查。");
+        busy.code = "MEDIA_TOOLS_BUSY";
+        return Promise.reject(busy);
       }
-      return null;
+      mediaToolsStatus.state = "checking";
+      mediaToolsPromise = Promise.resolve().then(resolveMediaTools).then(function (result) {
+        if (!result || !result.ok || ["system", "bundled"].indexOf(result.source) === -1 ||
+            ["arm64", "x64"].indexOf(result.architecture) === -1 ||
+            typeof result.ffmpeg !== "string" || typeof result.ffprobe !== "string" ||
+            !path.isAbsolute(result.ffmpeg) || !path.isAbsolute(result.ffprobe) ||
+            path.dirname(result.ffmpeg) !== path.dirname(result.ffprobe) ||
+            path.basename(result.ffmpeg) !== "ffmpeg" || path.basename(result.ffprobe) !== "ffprobe") {
+          throw unavailableTools(result);
+        }
+        selectedMediaTools = { ffmpeg: result.ffmpeg, ffprobe: result.ffprobe };
+        mediaToolsStatus = { state: "ready", source: result.source, architecture: result.architecture, version: result.version || "", error: null };
+        return getStatus();
+      }).catch(function (error) {
+        error = error && error.code === "MEDIA_TOOLS_UNAVAILABLE" ? error : unavailableTools(error);
+        selectedMediaTools = null;
+        mediaToolsStatus = { state: "unavailable", source: null, architecture: null, error: error };
+        throw error;
+      });
+      return mediaToolsPromise;
+    }
+
+    function getStatus() {
+      return { state: mediaToolsStatus.state, source: mediaToolsStatus.source, architecture: mediaToolsStatus.architecture, version: mediaToolsStatus.version || "", error: mediaToolsStatus.error };
+    }
+
+    function findBinary(name) {
+      return selectedMediaTools && (name === "ffmpeg" || name === "ffprobe") ? selectedMediaTools[name] : null;
+    }
+
+    function cancellationGuard(jobKey) {
+      var epoch = cancelledJobKeys[jobKey] || 0;
+      function prefixEpoch() {
+        return Object.keys(cancelledPrefixes).reduce(function (sum, prefix) { return sum + (String(jobKey).indexOf(prefix) === 0 ? cancelledPrefixes[prefix] : 0); }, 0);
+      }
+      var prefix = prefixEpoch();
+      return function () {
+        if ((cancelledJobKeys[jobKey] || 0) !== epoch || prefixEpoch() !== prefix) { throw cancelledError(); }
+      };
+    }
+
+    function whenMediaToolsReady(method, prefix) {
+      return function () {
+        var args = arguments;
+        var assertCurrent = cancellationGuard(prefix + String(args[0] || ""));
+        return prepare().then(function () {
+          assertCurrent();
+          return method.apply(null, args);
+        }, function (error) { assertCurrent(); throw error; });
+      };
     }
 
     function cancelledError() {
@@ -753,7 +834,7 @@
     }
 
     function terminalMediaError(error) {
-      return !!(error && (error.code === "JOB_CANCELLED" || error.code === "MEDIA_PROCESS_TIMEOUT" || /^(CACHE_|FFMPEG_NOT_FOUND|FFPROBE_NOT_FOUND)/.test(error.code || error.message || "")));
+      return !!(error && (error.code === "JOB_CANCELLED" || error.code === "MEDIA_PROCESS_TIMEOUT" || /^(CACHE_|MEDIA_TOOLS_|FFMPEG_NOT_FOUND|FFPROBE_NOT_FOUND)/.test(error.code || error.message || "")));
     }
 
     function pumpFfmpegQueue() {
@@ -893,24 +974,20 @@
     }
 
     function runFfmpeg(args, destination, timeout, jobKey, onOutput) {
-      var ffmpeg = findBinary("ffmpeg");
       var isCacheOutput = destination.indexOf(cacheRoot + path.sep) === 0;
       var actualDestination = isCacheOutput ? cacheTemporaryPath(destination) : destination;
       var actualArgs = args.slice();
       var outputIndex;
-      var cancellationEpoch = (cancelledJobKeys[jobKey] || 0);
-      var prefixEpoch = Object.keys(cancelledPrefixes).reduce(function (sum, prefix) { return sum + (String(jobKey).indexOf(prefix) === 0 ? cancelledPrefixes[prefix] : 0); }, 0);
-      if (!ffmpeg) {
-        return Promise.reject(new Error("FFMPEG_NOT_FOUND"));
-      }
+      var assertCurrent = cancellationGuard(jobKey);
       if (isCacheOutput) {
         for (outputIndex = actualArgs.length - 1; outputIndex >= 0; outputIndex -= 1) { if (actualArgs[outputIndex] === destination) { actualArgs[outputIndex] = actualDestination; break; } }
       }
-      var prepare = isCacheOutput ? prepareCacheOutput(actualDestination, destination, actualArgs) : Promise.resolve();
-      return prepare.then(function () {
-        var currentPrefixEpoch = Object.keys(cancelledPrefixes).reduce(function (sum, prefix) { return sum + (String(jobKey).indexOf(prefix) === 0 ? cancelledPrefixes[prefix] : 0); }, 0);
-        if ((cancelledJobKeys[jobKey] || 0) !== cancellationEpoch || currentPrefixEpoch !== prefixEpoch) { throw cancelledError(); }
-        return execFileQueued(ffmpeg, actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput, function () { removeFailedCacheFile(actualDestination); });
+      return prepare().then(function () {
+        assertCurrent();
+        return isCacheOutput ? prepareCacheOutput(actualDestination, destination, actualArgs) : null;
+      }).then(function () {
+        assertCurrent();
+        return execFileQueued(findBinary("ffmpeg"), actualArgs, { timeout: timeout || 120000, maxBuffer: 8 * 1024 * 1024 }, jobKey, onOutput, function () { removeFailedCacheFile(actualDestination); });
       }).then(function (result) {
         if (!usableCacheFile(actualDestination)) { throw new Error(result.stderr || "OUTPUT_NOT_CREATED"); }
         return isCacheOutput ? publishCacheOutput(actualDestination, destination) : destination;
@@ -952,12 +1029,14 @@
     function previewProxyFor(filePath, profile) {
       var config = profileConfig(profile);
       var ext = String(path.extname(filePath)).toLowerCase();
+      var assertCurrent = cancellationGuard("preview:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key;
         var destination;
         var filter;
         var baseArgs;
         var hardwareArgs;
+        assertCurrent();
         if (config.name === "source" && [".mp4", ".m4v", ".webm"].indexOf(ext) !== -1) { return filePath; }
         key = cacheKey(filePath, stat) + "-v3-" + config.name;
         ensureDirectories(); destination = path.join(proxyDirectory, key + ".mp4");
@@ -981,7 +1060,9 @@
       var stat;
       var key;
       var destination;
+      var assertCurrent = cancellationGuard("audio:" + filePath);
       return statSource(filePath).then(function (sourceStat) {
+        assertCurrent();
         stat = sourceStat; key = cacheKey(filePath, stat) + "-v3"; ensureDirectories(); destination = path.join(audioProxyDirectory, key + ".m4a");
         if (usableCacheFile(destination)) { return destination; }
         return outputOnce(destination, function () { return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-vn", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-y", destination], destination, 120000, "audio:" + filePath); });
@@ -1116,10 +1197,12 @@
     }
 
     function metadataFor(filePath) {
+      var assertCurrent = cancellationGuard("metadata:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var cacheFile;
         var ffprobe;
+        assertCurrent();
         if (memoryMetadata[key]) { return memoryMetadata[key]; }
         if (pendingMetadata[key]) { return pendingMetadata[key]; }
         /* v3 invalidates the old cache because container labels are now
@@ -1145,14 +1228,14 @@
     }
 
     function generateWaveform(filePath) {
+      var assertCurrent = cancellationGuard("derived:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
-        var ffmpeg;
         var args;
+        assertCurrent();
         ensureDirectories(); destination = path.join(waveformDirectory, key + "-v3.png");
         if (usableCacheFile(destination)) { return destination; }
-        ffmpeg = findBinary("ffmpeg"); if (!ffmpeg) { throw new Error("FFMPEG_NOT_FOUND"); }
         args = ["-hide_banner", "-loglevel", "error", "-i", filePath, "-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=600x120:colors=0x62d684:scale=sqrt:draw=full[wave]", "-map", "[wave]", "-frames:v", "1", "-an", "-sn", "-dn", "-y", destination];
         return outputOnce(destination, function () { return runFfmpeg(args, destination, 45000, "derived:" + destination); });
       });
@@ -1176,15 +1259,18 @@
     }
 
     function posterFor(filePath) {
+      var assertCurrent = cancellationGuard("derived:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
+        assertCurrent();
         ensureDirectories(); destination = path.join(posterDirectory, key + "-v4.png");
         if (usableCacheFile(destination)) { return destination; }
         return metadataFor(filePath).then(function (metadata) {
           var times = posterSampleTimes(metadata.duration);
           var videoStreamIndex = numberOrNull(metadata.videoStreamIndex);
           var lastError = null;
+          assertCurrent();
           videoStreamIndex = videoStreamIndex === null ? 0 : videoStreamIndex;
 
           function tryCandidate(index) {
@@ -1223,10 +1309,12 @@
     }
 
     function previewStillFor(filePath) {
+      var assertCurrent = cancellationGuard("derived:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat) + "-ql-v1";
         var destination = path.join(stillPreviewDirectory, key + ".png");
         var extension = String(path.extname(filePath)).toLowerCase();
+        assertCurrent();
         if (usableCacheFile(destination)) { return destination; }
         if (extension === ".psd" || extension === ".psb") {
           return outputOnce(destination, function () { return runFfmpeg(["-hide_banner", "-loglevel", "error", "-i", filePath, "-frames:v", "1", "-vf", "scale=960:960:force_original_aspect_ratio=decrease", "-y", destination], destination, 45000, "derived:" + destination); });
@@ -1287,17 +1375,18 @@
     }
 
     function spriteFor(filePath) {
+      var assertCurrent = cancellationGuard("derived:" + filePath);
       return statSource(filePath).then(function (stat) {
         var key = cacheKey(filePath, stat);
         var destination;
-        var ffmpeg;
-        ensureDirectories(); destination = path.join(spriteDirectory, key + "-v3.jpg");
-        ffmpeg = findBinary("ffmpeg"); if (!ffmpeg) { throw new Error("FFMPEG_NOT_FOUND"); }
+        assertCurrent();
+        ensureDirectories(); destination = path.join(spriteDirectory, key + "-v4.jpg");
         return metadataFor(filePath).then(function (metadata) {
+          assertCurrent();
           if (usableCacheFile(destination)) {
-            return { path: destination, frames: SPRITE_FRAMES, frameCount: SPRITE_FRAMES, columns: SPRITE_COLUMNS, rows: SPRITE_ROWS, cellWidth: 240, cellHeight: 136, width: 960, height: 408, sampleTimes: spriteSampleTimes(metadata.duration, SPRITE_FRAMES) };
+            return { path: destination, frames: SPRITE_FRAMES, frameCount: SPRITE_FRAMES, columns: SPRITE_COLUMNS, rows: SPRITE_ROWS, cellWidth: 240, cellHeight: 136, width: 960, height: 408, sampleTimes: spriteSampleTimes(metadata.duration, SPRITE_FRAMES, metadata.frameRate) };
           }
-        var times = spriteSampleTimes(metadata.duration, SPRITE_FRAMES);
+        var times = spriteSampleTimes(metadata.duration, SPRITE_FRAMES, metadata.frameRate);
         var videoStreamIndex = numberOrNull(metadata.videoStreamIndex);
         var args = ["-hide_banner", "-loglevel", "error"];
         var filters = [];
@@ -1346,16 +1435,16 @@
     return {
       cacheRoot: cacheRoot,
       captureDirectory: captureDirectory,
-      metadataFor: metadataFor,
-      posterFor: posterFor,
-      waveformFor: generateWaveform,
-      previewStillFor: previewStillFor,
-      spriteFor: spriteFor,
-      previewProxyFor: previewProxyFor,
-      audioProxyFor: audioProxyFor,
-      frameFor: frameFor,
-      captureFrameForProject: captureFrameForProject,
-      transcodeTo: transcodeTo,
+      metadataFor: whenMediaToolsReady(metadataFor, "metadata:"),
+      posterFor: whenMediaToolsReady(posterFor, "derived:"),
+      waveformFor: whenMediaToolsReady(generateWaveform, "derived:"),
+      previewStillFor: whenMediaToolsReady(previewStillFor, "derived:"),
+      spriteFor: whenMediaToolsReady(spriteFor, "derived:"),
+      previewProxyFor: whenMediaToolsReady(previewProxyFor, "preview:"),
+      audioProxyFor: whenMediaToolsReady(audioProxyFor, "audio:"),
+      frameFor: whenMediaToolsReady(frameFor, "frame:"),
+      captureFrameForProject: whenMediaToolsReady(captureFrameForProject, "capture:"),
+      transcodeTo: whenMediaToolsReady(transcodeTo, "user-transcode:"),
       claimTranscodeOutput: claimTranscodeOutput,
       cleanupTranscodeTemporary: cleanupTranscodeTemporary,
       cancelViewerJobs: cancelViewerJobs,
@@ -1365,7 +1454,9 @@
       releaseCacheFile: releaseCacheFile,
       pruneCache: pruneCache,
       cacheStats: cacheTotals,
-      findBinary: findBinary
+      findBinary: findBinary,
+      prepare: prepare,
+      getStatus: getStatus
     };
   }
 

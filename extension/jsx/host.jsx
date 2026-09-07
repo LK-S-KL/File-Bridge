@@ -1027,7 +1027,7 @@ $.global.SeekBridge = $.global.SeekBridge || {};
         }
     }
 
-    ns.version = "0.6.7";
+    ns.version = "0.6.8";
     ns.getCapabilities = function () {
         return toJson({ ok: true, version: ns.version, lutApplication: false, lutReason: "当前宿主不支持可安全回滚的 LUT 写入" });
     };

@@ -48,40 +48,37 @@ lkfb_acquire_lock() {
   lkfb_operation_dir="$(mktemp -d "${lkfb_backup_base}/$(date +%Y%m%d-%H%M%S).XXXXXX")" || return $?
 }
 
-lkfb_binary_runs() {
-  local executable="$1"
-  [[ -x "${executable}" && ! -d "${executable}" ]] || return 1
-  /usr/bin/perl -e '
-    my $pid = fork(); defined($pid) or exit 125;
-    if ($pid == 0) { exec @ARGV; exit 126; }
-    $SIG{ALRM} = sub { kill "KILL", $pid; waitpid($pid, 0); exit 124; };
-    alarm 8; waitpid($pid, 0); my $result = $?; alarm 0;
-    exit(($result & 127) ? 128 + ($result & 127) : $result >> 8);
-  ' "${executable}" -version >/dev/null 2>&1
-}
-
 lkfb_check_media_tools() {
-  local tool candidate found
-  local -a directories
+  local source_dir="$1"
+  local resolver="${source_dir}/js/resolve-media-tools.pl"
+  local result
+  local -a arguments
+  [[ -f "${resolver}" ]] || { print -u2 "安装包不完整：缺少媒体组件检查器，请重新下载完整 macOS 安装包。"; return 1; }
+  arguments=("${resolver}" --root "${source_dir}" --home "${lkfb_install_home}")
   if [[ -n "${LKFB_MEDIA_BIN_DIR:-}" ]]; then
-    directories=("${LKFB_MEDIA_BIN_DIR}")
-  else
-    directories=("${lkfb_install_home}/.local/bin" /opt/homebrew/bin /usr/local/bin)
+    arguments+=(--system-dir "${LKFB_MEDIA_BIN_DIR}")
   fi
-  for tool in ffmpeg ffprobe; do
-    found=0
-    for candidate in "${directories[@]}"; do
-      if lkfb_binary_runs "${candidate}/${tool}"; then
-        print "依赖检查通过：${candidate}/${tool}"
-        found=1
-        break
-      fi
-    done
-    if [[ "${found}" != 1 ]]; then
-      print -u2 "安装已停止：找不到可运行的 ${tool}。请先通过 Homebrew 安装 FFmpeg（brew install ffmpeg），或将 ffmpeg 和 ffprobe 放入 ${lkfb_install_home}/.local/bin。请使用与你的 Mac 处理器匹配的版本。"
-      return 1
+  print "正在检查系统与内置 FFmpeg / FFprobe（首次可能需要几秒）…"
+  if ! result="$(/usr/bin/perl "${arguments[@]}")"; then
+    print -u2 "安装已停止：系统及内置 ffmpeg / ffprobe 都未通过验证，未覆盖旧插件。"
+    print -u2 "请先重新下载完整 macOS 包；查看包内安装说明的媒体组件修复部分。"
+    print -u2 -r -- "${result}"
+    if [[ -t 1 && -z "${LKFB_INSTALL_HOME:-}" && -f "${source_dir}/help/MAC-INSTALL.txt" ]]; then
+      /usr/bin/open -a TextEdit "${source_dir}/help/MAC-INSTALL.txt" || true
     fi
-  done
+    return 1
+  fi
+  print -r -- "${result}" | /usr/bin/perl -MJSON::PP -e '
+    local $/; my $r = decode_json(<STDIN>);
+    exit 1 unless $r->{ok} && $r->{source} =~ /^(system|bundled)$/ && $r->{ffmpeg} && $r->{ffprobe};
+    print "$r->{source}: FFmpeg $r->{version} ($r->{architecture})\n";
+    print "ffmpeg: $r->{ffmpeg}\nffprobe: $r->{ffprobe}\n";
+  ' || return $?
+  if [[ "${result}" == *'"source":"system"'* ]]; then
+    print "复用系统媒体组件，不安装或覆盖系统 FFmpeg。"
+  else
+    print "使用内置媒体组件，无需安装 Homebrew 或联网下载。"
+  fi
 }
 
 lkfb_archive_matching_extensions() {
@@ -100,11 +97,14 @@ lkfb_install() {
   local source_dir="$1"
   local mode="${2:-copy}"
   local stage
+  if [[ "$(/usr/bin/uname -s)" != Darwin ]]; then
+    print -u2 "此安装器仅支持 macOS，不能用于 Windows。"
+    return 1
+  fi
   if [[ "$(lkfb_manifest_id "${source_dir}")" != "${lkfb_bundle_id}" ]]; then
     print -u2 "找不到有效的安装源：${source_dir}"
     return 1
   fi
-  lkfb_check_media_tools || return $?
   lkfb_acquire_lock || return $?
   mkdir -p "${lkfb_extensions}" || return $?
   if [[ ( -e "${lkfb_destination}" || -L "${lkfb_destination}" ) && "$(lkfb_manifest_id "${lkfb_destination}")" != "${lkfb_bundle_id}" ]]; then
@@ -115,9 +115,11 @@ lkfb_install() {
   if [[ "${mode}" == symlink ]]; then
     ln -s "${source_dir}" "${stage}" || return $?
   else
-    ditto --noqtn "${source_dir}" "${stage}" || return $?
+    ditto --norsrc --noextattr --noqtn "${source_dir}" "${stage}" || return $?
   fi
   [[ "$(lkfb_manifest_id "${stage}")" == "${lkfb_bundle_id}" ]] || return 1
+  # Validate only the new copied payload; do not execute quarantined download files.
+  lkfb_check_media_tools "${stage}" || return $?
   if [[ "${LKFB_SKIP_DEFAULTS:-0}" != "1" ]]; then
     defaults write com.adobe.CSXS.12 PlayerDebugMode -string "1" || return $?
   fi

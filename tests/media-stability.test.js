@@ -31,7 +31,7 @@ function fixture(options = {}) {
       return child;
     }
   };
-  const service = media.create({ fs, path, os: { homedir: () => directory }, crypto, childProcess: processRuntime, terminationGraceMs: 25, sourceStatTtlMs: 0, cacheSettings: { minimumFreeBytes: 0, ...(options.cacheSettings || {}) }, ...options.runtime });
+  const service = media.create({ fs, path, os: { homedir: () => directory }, crypto, childProcess: processRuntime, resolveMediaTools: () => ({ ok: true, source: "system", architecture: "arm64", ffmpeg: path.join(directory, ".local", "bin", "ffmpeg"), ffprobe: path.join(directory, ".local", "bin", "ffprobe"), version: "test" }), terminationGraceMs: 25, sourceStatTtlMs: 0, cacheSettings: { minimumFreeBytes: 0, ...(options.cacheSettings || {}) }, ...options.runtime });
   return { directory, sources, calls, service, cleanup: () => fs.rmSync(directory, { recursive: true, force: true }) };
 }
 
@@ -50,6 +50,8 @@ test("cancelled media jobs settle immediately, escalate KILL, and recover both q
     const second = f.service.previewProxyFor(f.sources[1], "720").then(() => null, error => error);
     const third = f.service.previewProxyFor(f.sources[2], "720");
     await until(() => f.calls.length === 2);
+    await assert.rejects(f.service.prepare({ retry: true }), { code: "MEDIA_TOOLS_BUSY" });
+    assert.equal(f.service.getStatus().state, "ready");
     f.service.cancelViewerJobs(f.sources[0]); f.service.cancelViewerJobs(f.sources[1]);
     assert.equal((await first).code, "JOB_CANCELLED");
     assert.equal((await second).code, "JOB_CANCELLED");

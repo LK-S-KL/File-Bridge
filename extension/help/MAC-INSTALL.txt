@@ -1,0 +1,97 @@
+File Bridge · macOS 安装与媒体组件修复
+
+适用范围
+本版为 macOS 安装包，内含 Apple Silicon（M 系列）和 Intel 两套 FFmpeg /
+FFprobe，安装时自动识别。Windows 不适用；ZIP 仅是另一种 Mac 打包格式。
+目标 Adobe Premiere Pro / After Effects 2025（25.x）、CEP 12。更新的 Adobe
+版本仍需验证。媒体组件要求 macOS 12.0 或以上，同时必须满足 Adobe 自身要求。
+M 系列已做原生测试，Intel 程序已在 Rosetta 下测试，未替代 Intel Mac 实机验收。
+
+正常安装只需四步
+1. 在 https://github.com/LK-S-KL/File-Bridge/releases 下载最新 macOS 安装包。
+   ZIP 与 DMG 二选一，不要下载 GitHub 自动生成的 Source code。
+   ZIP：先双击完整解压；DMG：双击挂载，再打开磁盘窗口。
+2. 保存所有工程，对 Premiere Pro 和 After Effects 分别按 Command + Q 完整退出。
+3. 双击包内的“安装 LK‘s File Bridge.command”，等待终端出现“已安装”。
+   安装器会自动检查媒体组件：电脑上有合格版本就直接复用；没有则使用内置
+   版本。正常情况下无需安装 Homebrew、输入命令或联网下载 FFmpeg。
+4. 重新打开 Adobe，在“窗口 > 扩展 > LK‘s File Bridge”打开插件。
+   英文界面：Window > Extensions > LK‘s File Bridge。
+
+这不是独立 App，不用拖到“应用程序”。不要单独移动 .command、.zsh 或 extension
+文件夹；安装脚本须与它们放在一起。成功后可以推出 DMG 或移走安装包。
+
+安装过程中会看到什么
+- 先检查 FFmpeg 与 FFprobe：必须是同一目录的一对工具，并通过版本、编码能力
+  和短片转码/读取检查。仅“电脑里有一个 ffmpeg 文件”不代表可以复用。
+- 显示“复用系统媒体组件”或“使用内置媒体组件”，然后完成复制与升级。
+- 内置文件只在插件目录内，不覆盖 /opt/homebrew、/usr/local 或你的其他 FFmpeg。
+- 不自动安装 Homebrew，不修改系统 PATH，不要求管理员密码来复制插件。
+- 先复制到插件专用暂存目录，再校验并检测；不执行下载目录中的隔离组件，
+  不修改源下载包。缺少组件或组件损坏时明确报错并停止，保留旧扩展。
+
+首次安全提示
+本插件尚未取得 Apple Developer ID 签名和公证；内置工具使用临时签名，临时
+签名不代表 Apple 审核通过。请只使用上述仓库的安装包。
+如果“无法验证开发者”或“Apple 无法检查”阻止打开，先确认来源和下载校验，
+然后在“系统设置 > 隐私与安全性”中找到该安装器，选择“仍要打开”，再确认。
+若没有此按钮，或公司策略禁止脚本，请联系 IT。
+若提示“将损坏电脑”或明确恶意内容，请停止，不要强行放行。
+不要关闭 Gatekeeper、SIP 或批量清除整个下载文件夹的隔离标记。
+
+安装器为当前用户开启 CEP 12 的 PlayerDebugMode，以加载未签名扩展。
+它不会全局关闭 macOS 的门禁保护；此 CEP 设置也影响当前用户的其他 CEP 12
+扩展，请只安装可信扩展。升级和卸载都不会删除源素材、工程或本机收藏。
+
+第一次打开后的检查
+1. 用一个空白测试工程打开插件。
+2. 点击工具栏右侧文件夹图标，添加并勾选一个本地素材文件夹。
+3. 用一小段 MP4 和 JPG 检查缩略图、视频画面及声音。
+4. 在测试工程中右键素材 > 导入项目，确认文件出现在项目面板。
+5. 共享盘要先在 Finder 中连接，再添加路径；没有勾选路径时不会显示素材。
+6. 菜单中的“版本与运行信息”可查看版本；媒体组件信息可查看当前使用系统
+   还是内置工具。变更依赖后，可重新检查媒体组件或重启插件。
+
+异常时怎么处理
+
+提示找不到或无法运行 FFmpeg / FFprobe：
+先完整重新下载 macOS 包，不要只下载 Source code，也不要只复制安装脚本。
+确认 macOS 不低于 12，并检查磁盘空间与系统拦截提示。重新安装不会更改系统
+FFmpeg，也不会删除素材。如果插件能打开，使用菜单中的媒体组件检查/修复入口。
+系统版本不兼容、公司策略限制或重新下载后仍失败，请把报错截图交给维护者。
+
+需要手动安装依赖的备用方式（非正常安装必需）：
+可由 IT 安装匹配处理器的 FFmpeg 与 FFprobe 到 ~/.local/bin、/opt/homebrew/bin
+或 /usr/local/bin。已有 Homebrew 的用户可在“终端”运行 brew install ffmpeg。
+没有 Homebrew 的用户仅按 https://brew.sh/zh-cn/ 官方说明安装，随后分别运行
+ffmpeg -version 与 ffprobe -version 验证；不要执行来源不明的一键修复脚本。
+安装后重新运行插件安装器或重新检查媒体组件。
+
+安装成功但 Adobe 没看到插件：
+确认安装用户与启动 Adobe 的用户相同，Adobe 为目标版本，并已完整退出重启。
+安装器只管理当前用户的 CEP 目录；系统级旧副本请联系 IT 排查，勿手工重复复制。
+
+安装脚本打开成文本：
+Finder 右键脚本 > 打开方式 > 终端。报“找不到安装源”说明目录不完整，重新解压。
+
+卸载或恢复
+先退出 Adobe，双击同包的“卸载 LK‘s File Bridge.command”。卸载把整个扩展
+（含内置媒体工具）移到可恢复备份，不动系统 FFmpeg，不删除工程或素材。
+备份在 ~/Library/Application Support/LK File Bridge/Extension Backups。
+该备份可能包含完整内置工具，长期升级后会占用磁盘。确认不需回退后请通过
+Finder 手工将指定旧备份移到废纸篓；不要删除整个 Adobe 扩展目录。
+卸载不会自动关闭 PlayerDebugMode，避免影响其他内测扩展。
+
+校验下载（可选）
+下载同版 SHA256SUMS.txt，在终端输入 shasum -a 256 加空格，再把 ZIP 或 DMG
+拖进去按回车。输出的长串字符须与清单中对应文件一致；不一致时重新下载。
+
+开源组件
+本软件通过独立进程使用 FFmpeg 及 x264，内置构建为 GPL-2.0-or-later，未启用
+nonfree 组件。许可证、准确对应的完整源码和构建说明在 extension/vendor/media
+目录的 legal 和 sources 子目录；顶层“开源组件说明.txt”也标明位置。
+FFmpeg 不归本插件作者所有。可以自行修改和重建这些工具；合法使用及再分发须
+遵守所附许可证。这不是对编解码专利问题的法律保证。
+
+反馈请提供：芯片型号、macOS 版本、Adobe 版本、插件版本、媒体组件来源和具体
+错误步骤；不要在公开 Issue 中粘贴密码、客户素材、完整私人路径或共享盘凭据。

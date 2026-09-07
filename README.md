@@ -72,18 +72,19 @@ After Effects 没有可靠的扩展面板文件拖入协议，因此 AE 中卡�
 
 ## 内测分发
 
-当前 Release 仅提供 **macOS** 安装包，**Windows 暂不支持**。ZIP 与 DMG 是同一套
-Mac 文件的两种封装，不是两种操作系统版本。M 系列与 Intel 共用插件脚本，但须准备
-匹配处理器的 `ffmpeg` 和 `ffprobe`；Intel 和多 Adobe 版本仍需实机验收。
+0.6.8 的 **macOS** 包内置 ARM64 和 Intel 两套 FFmpeg / FFprobe，**Windows 暂不支持**。
+ZIP 与 DMG 内容相同，任选一种；系统已有同目录配对且通过检测的工具时复用，否则
+自动使用匹配 Mac 架构的内置工具。不覆盖系统 FFmpeg，不自动安装 Homebrew 或修改 PATH。
 
-同事安装请先阅读 [完整安装说明](packaging/README-INTERNAL.txt)，再从
-[Release 附件](https://github.com/LK-S-KL/File-Bridge/releases/tag/v0.6.7-internal)
-选择带 `macOS-install-r2` 的 ZIP 或 DMG，不要下载自动生成的 Source code。
-操作系统、Adobe 版本及未验证范围见 [安装兼容性核查](docs/INSTALLATION_COMPATIBILITY.md)。
+同事安装请先阅读 [完整安装说明](extension/help/MAC-INSTALL.txt)，再从
+[Release 附件](https://github.com/LK-S-KL/File-Bridge/releases)
+下载 macOS ZIP 或 DMG，不要下载自动生成的 Source code。
+正常安装无需联网获取依赖：保存工程、退出 Adobe、运行包内安装脚本、重启 Adobe。
 
-这是未签名、未公证的 CEP 内测包，不是零依赖安装器。安装脚本验证媒体依赖后，
-为当前用户开启 CSXS 12 的 PlayerDebugMode，并将旧扩展移到 CEP 扫描目录之外备份。
-用户须先保存工程并退出 Adobe，安装后重新打开 Adobe 软件。
+目标为 Adobe 25.x / CEP 12。内置工具最低 macOS 12，仍须满足 Adobe 自身系统要求。
+ARM64 原生和 Intel Rosetta 媒体测试通过，但 Intel Mac、多 Adobe 版本仍需实机验收。
+未签名 CEP、临时签名媒体工具，尚未 Apple 公证；系统提示需用户明确放行。
+安装脚本为当前用户开启 CEP 12 PlayerDebugMode，旧扩展备份到 Adobe 扫描目录之外。
 
 开发者从当前代码构建新版本：
 
@@ -91,9 +92,15 @@ Mac 文件的两种封装，不是两种操作系统版本。M 系列与 Intel �
 npm run package:internal
 ```
 
-脚本使用 `package.json` 的版本号在桌面生成 ZIP / DMG，不覆盖已存在的同版本产物。
-0.6.7 的 `install-r2` 使用 `scripts/repackage-release-docs.cjs` 从原 Release ZIP
-修订文档，验证插件与脚本字节不变，不包含发布标签之后的程序改动。
+首次打包前先运行 `npm run media:build:macos`，从验证过的 FFmpeg 源码和固定的
+x264 提交编译两种架构；需要 Xcode Command Line Tools 和 GnuPG。生成文件在忽略的
+`build/macos-media`，不得提交二进制或构建临时目录到 Git。
+打包器验证二进制、源码哈希和许可证，随包附带完整对应源码、配置与构建脚本；
+只有 Apple 系统库可作为运行时动态依赖。输出在桌面版本文件夹，不覆盖旧包。
+
+本软件以独立子进程使用 FFmpeg / x264，内置构建为 **GPL-2.0-or-later**，未启用
+nonfree。源码及许可证同时包含于安装包 `extension/vendor/media/{sources,legal}` 和
+Release 的 `FFmpeg-Sources.zip`。参见 [FFmpeg 许可说明](https://ffmpeg.org/legal.html)。
 
 ## 开发检查
 

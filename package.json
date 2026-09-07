@@ -1,12 +1,14 @@
 {
   "name": "lk-file-bridge-adobe-extension",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "private": true,
   "description": "LK‘s File Bridge media browser and ingest bridge for Adobe Premiere Pro and After Effects",
   "scripts": {
     "check": "node scripts/check.js && node scripts/version.js check",
     "test": "node --test tests/*.test.js && npm run check",
     "package:internal": "zsh scripts/package-internal.command",
+    "package:macos": "node scripts/package-macos.cjs",
+    "media:build:macos": "node scripts/build-macos-media.cjs",
     "version:check": "node scripts/version.js check",
     "version:set": "node scripts/version.js set"
   },

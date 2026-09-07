@@ -20,13 +20,29 @@ function fixture(t) {
   for (const filename of ["install-internal.command", "uninstall-internal.command", "extension-maintenance.zsh"]) {
     fs.copyFileSync(path.join(projectRoot, "packaging", filename), path.join(packageDir, filename));
   }
-  for (const name of ["ffmpeg", "ffprobe"]) fs.writeFileSync(path.join(bins, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const tool = `#!/usr/bin/perl
+use strict; use warnings;
+my ($name) = $0 =~ m{([^/]+)$};
+if ($ARGV[0] eq '-version') { print "$name version 8.0.3 mock\\n"; exit 0; }
+if (grep { /^-(encoders|decoders|filters)$/ } @ARGV) {
+  print " V..... $_ Mock\\n" for qw(libx264 aac png h264 hevc scale pad format xstack showwavespic signalstats metadata trim tile);
+  exit 0;
+}
+if ($name eq 'ffprobe') { print '{"streams":[{"codec_type":"video","codec_name":"h264","width":64,"height":64},{"codec_type":"audio","codec_name":"aac"}]}'; exit 0; }
+open my $out, '>:raw', $ARGV[-1] or die $!;
+print $out $ARGV[-1] =~ /\\.png$/ ? pack('H*','89504e470d0a1a0a0000000d494844520000004000000040') : 'sample';
+close $out;
+`;
+  for (const name of ["ffmpeg", "ffprobe"]) fs.writeFileSync(path.join(bins, name), tool, { mode: 0o755 });
   function extensionAt(location, id = bundleId) {
     fs.mkdirSync(path.join(location, "CSXS"), { recursive: true });
     fs.writeFileSync(path.join(location, "CSXS/manifest.xml"), `<ExtensionManifest ExtensionBundleId="${id}" ExtensionBundleVersion="test"/>`);
     fs.writeFileSync(path.join(location, "index.html"), location);
   }
   extensionAt(path.join(packageDir, "extension"));
+  fs.mkdirSync(path.join(packageDir, "extension/js"));
+  fs.copyFileSync(path.join(projectRoot, "extension/js/resolve-media-tools.pl"), path.join(packageDir, "extension/js/resolve-media-tools.pl"));
+  fs.mkdirSync(installHome, { recursive: true });
   const env = { ...process.env, LKFB_INSTALL_HOME: installHome, LKFB_SKIP_DEFAULTS: "1", LKFB_MEDIA_BIN_DIR: bins };
   const run = (name, extraEnv = {}) => childProcess.spawnSync("/bin/zsh", [path.join(packageDir, name + "-internal.command")], { env: { ...env, ...extraEnv }, encoding: "utf8", timeout: 25000 });
   const matches = () => fs.existsSync(extensions) ? fs.readdirSync(extensions).filter(name => {
@@ -53,6 +69,31 @@ test("installer migrates same-ID legacy directories outside CEP, stays single af
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.deepEqual(f.matches(), []);
   assert.equal(fs.existsSync(unrelated), true);
+});
+
+test("installer uses the bundled pair when system tools are absent and keeps the bundle inside the plugin", t => {
+  const f = fixture(t);
+  const arch = childProcess.spawnSync('/usr/sbin/sysctl', ['-n','hw.optional.arm64'], {encoding:'utf8'}).stdout.trim() === '1' ? 'arm64' : 'x64';
+  const target = `darwin-${arch}`;
+  const base = path.join(f.packageDir, 'extension/vendor/media');
+  const bin = path.join(base, target);
+  fs.mkdirSync(bin, {recursive:true});
+  const records = {};
+  for (const name of ['ffmpeg','ffprobe']) {
+    fs.copyFileSync(path.join(f.bins, name), path.join(bin, name));
+    records[name] = {path:`${target}/${name}`,sha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(bin,name))).digest('hex')};
+    fs.rmSync(path.join(f.bins,name));
+  }
+  fs.writeFileSync(path.join(base,'manifest.json'),JSON.stringify({schemaVersion:1,architectures:{[target]:{binaries:records}}}));
+  childProcess.execFileSync('/usr/bin/xattr', ['-w', 'com.apple.quarantine', '0081;00000000;FileBridgeTest;', path.join(bin,'ffmpeg')]);
+  const result = f.run('install');
+  assert.equal(result.status,0,result.stdout+result.stderr);
+  assert.match(result.stdout,/使用内置媒体组件/);
+  assert.equal(fs.existsSync(path.join(f.extensions,bundleId,'vendor/media',target,'ffmpeg')),true);
+  assert.equal(childProcess.spawnSync('/usr/bin/xattr', ['-p','com.apple.quarantine',path.join(f.extensions,bundleId,'vendor/media',target,'ffmpeg')]).status,1);
+  assert.equal(childProcess.spawnSync('/usr/bin/xattr', ['-p','com.apple.quarantine',path.join(bin,'ffmpeg')]).status,0);
+  assert.equal(fs.existsSync(path.join(f.bins,'ffmpeg')),false);
+  assert.equal(f.run('uninstall').status,0);
 });
 
 test("installer requires both runnable binaries before changing an existing extension", t => {

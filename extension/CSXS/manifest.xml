@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionManifest Version="7.0"
   ExtensionBundleId="com.fnnas.seekbridge.mvp"
-  ExtensionBundleVersion="0.6.7"
+  ExtensionBundleVersion="0.6.8"
   ExtensionBundleName="LK‘s File Bridge"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.fnnas.seekbridge.mvp.panel" Version="0.6.7" />
+    <Extension Id="com.fnnas.seekbridge.mvp.panel" Version="0.6.8" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>

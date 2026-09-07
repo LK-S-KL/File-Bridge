@@ -31,6 +31,8 @@ for (const sourcePath of [mainPath, libraryPath, mediaToolsPath, lutToolsPath, t
 
 childProcess.execFileSync("/usr/bin/xmllint", ["--noout", manifestPath]);
 childProcess.execFileSync("/usr/bin/xmllint", ["--noout", debugPath]);
+childProcess.execFileSync("/usr/bin/perl", ["-c", path.join(extensionRoot, "js", "resolve-media-tools.pl")]);
+childProcess.execFileSync("/bin/zsh", ["-n", path.join(projectRoot, "packaging", "extension-maintenance.zsh")]);
 
 const manifest = fs.readFileSync(manifestPath, "utf8");
 const indexSource = fs.readFileSync(path.join(extensionRoot, "index.html"), "utf8");

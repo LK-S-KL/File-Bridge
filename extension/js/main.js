@@ -15,8 +15,9 @@
   var os = nodeAvailable ? require("os") : null;
   var crypto = nodeAvailable ? require("crypto") : null;
   var childProcess = nodeAvailable ? require("child_process") : null;
+  var extensionRoot = nodeAvailable ? path.dirname(decodeURIComponent(window.location.pathname)) : "";
   var csInterface = typeof CSInterface === "function" ? new CSInterface() : null;
-  var mediaTools = nodeAvailable ? FnOSMediaTools.create({ fs: fs, path: path, os: os, crypto: crypto, childProcess: childProcess }) : null;
+  var mediaTools = nodeAvailable ? FnOSMediaTools.create({ fs: fs, path: path, os: os, crypto: crypto, childProcess: childProcess, extensionRoot: extensionRoot }) : null;
   var lutTools = nodeAvailable ? FnOSLutTools.create({ fs: fs, path: path }) : null;
   var stateStore = nodeAvailable ? FnOSStateStore.create({ fs: fs, path: path, os: os }) : null;
   var fileOps = nodeAvailable ? FnOSFileOps.create({ fs: fs, path: path, childProcess: childProcess }) : null;
@@ -326,6 +327,7 @@
   }
 
   function bindEvents() {
+    bindMediaToolsControls();
     byId("clearPreviewCacheButton").addEventListener("click", function () {
       if (!mediaTools) { return; }
       var button = this; button.disabled = true;
@@ -335,9 +337,15 @@
     byId("diagnosticsButton").addEventListener("click", function () {
       var extensionPath = decodeURIComponent(window.location.pathname);
       var panelVersion = document.querySelector('meta[name="lkfb-version"]').content;
+      var toolsStatus = mediaTools && mediaTools.getStatus();
+      var toolsSummary = toolsStatus ? " · 媒体组件 " + (toolsStatus.state === "ready" ? (toolsStatus.source === "bundled" ? "内置" : "本机") + " / " + toolsStatus.architecture : toolsStatus.state === "checking" ? "检查中" : "不可用") : "";
+      if (toolsStatus && toolsStatus.state === "unavailable") {
+        showNotice(friendlyError(toolsStatus.error), true, 0);
+        return;
+      }
       if (csInterface && state.hostId !== "BROWSER") {
-        hostRequest("SeekBridge.getCapabilities()", 5000).then(function (result) { showNotice("面板 " + panelVersion + " / 宿主 " + result.version + " · " + state.hostId + " · " + extensionPath, panelVersion !== result.version, 0); }).catch(function (error) { showNotice(friendlyError(error), true, 0); });
-      } else { showNotice("面板 " + panelVersion + " · 浏览器测试 · " + extensionPath, false, 0); }
+        hostRequest("SeekBridge.getCapabilities()", 5000).then(function (result) { showNotice("面板 " + panelVersion + " / 宿主 " + result.version + " · " + state.hostId + toolsSummary + " · " + extensionPath, panelVersion !== result.version, 0); }).catch(function (error) { showNotice(friendlyError(error), true, 0); });
+      } else { showNotice("面板 " + panelVersion + " · 浏览器测试" + toolsSummary + " · " + extensionPath, false, 0); }
     });
     elements.refreshButton.addEventListener("click", scanAssets);
     elements.locationsButton.addEventListener("click", function (event) {
@@ -3540,8 +3548,39 @@
   function showNotice(message, isError, duration) { clearTimeout(noticeTimer); elements.notice.hidden = false; elements.notice.textContent = message; elements.notice.classList.toggle("is-error", !!isError); if (duration !== 0) { noticeTimer = setTimeout(function () { elements.notice.hidden = true; }, duration || 4000); } }
   function friendlyError(error) {
     if (!error) { return "未知错误"; }
+    if (error.code === "MEDIA_TOOLS_UNAVAILABLE") { return "媒体组件暂不可用。请在项目数量旁的菜单打开“安装说明”进行修复，再点击“重新检查媒体组件”。原始素材不受影响。"; }
     var messages = { CACHE_DISK_FULL: "磁盘剩余空间不足，请清理磁盘后重试", CACHE_BUDGET_EXCEEDED: "预览缓存预算不足，请关闭预览或清理闲置缓存", CACHE_OUTPUT_LIMIT: "当前预览超过缓存容量限制，请选择较低清晰度", CACHE_IO_TIMEOUT: "读取本地缓存超时", MEDIA_PROCESS_TIMEOUT: "媒体处理超时，请检查素材是否可读取", SOURCE_TIMEOUT: "共享位置响应超时", JOB_CANCELLED: "任务已取消", EACCES: "没有操作权限", EPERM: "没有操作权限", ENOENT: "路径不存在或共享位置已离线", FILE_NOT_FOUND: "路径不存在或共享位置已离线" };
     return messages[error.code || error.message] || error.message || String(error);
+  }
+
+  function initializeMediaTools() {
+    if (!mediaTools) { return; }
+    mediaTools.prepare().catch(function (error) { showNotice(friendlyError(error), true, 0); });
+  }
+
+  function bindMediaToolsControls() {
+    if (!mediaTools) { return; }
+    var menu = byId("resultActionsPopover");
+    var retryButton = document.createElement("button");
+    var helpButton = document.createElement("button");
+    retryButton.id = "checkMediaToolsButton"; retryButton.className = "menu-action"; retryButton.type = "button";
+    retryButton.textContent = "重新检查媒体组件";
+    helpButton.id = "mediaToolsHelpButton"; helpButton.className = "menu-action"; helpButton.type = "button";
+    helpButton.textContent = "安装说明";
+    menu.appendChild(retryButton); menu.appendChild(helpButton);
+    retryButton.addEventListener("click", function () {
+      retryButton.disabled = true;
+      mediaTools.prepare({ retry: true }).then(function (status) {
+        showNotice("媒体组件可用：" + (status.source === "bundled" ? "内置" : "本机") + " · " + status.architecture + " · " + status.version, false, 6000);
+        renderAssets();
+      }).catch(function (error) { showNotice(friendlyError(error), true, 0); }).then(function () { retryButton.disabled = false; });
+    });
+    helpButton.addEventListener("click", function () {
+      var guidePath = path.join(extensionRoot, "help", "MAC-INSTALL.txt");
+      childProcess.execFile("/usr/bin/open", [guidePath], { timeout: 8000 }, function (error) {
+        if (error) { showNotice("无法打开安装说明，请查看下载包内的安装说明文件。", true, 6000); }
+      });
+    });
   }
 
   function init() {
@@ -3554,9 +3593,8 @@
       var storageStatus = stateStore.getStatus();
       if (!storageStatus.writable || storageStatus.recovered) { showNotice(storageStatus.message, !storageStatus.writable, 0); }
     }
-    if (mediaTools && (!mediaTools.findBinary("ffmpeg") || !mediaTools.findBinary("ffprobe"))) {
-      showNotice("缺少 FFmpeg / ffprobe，媒体缩略图和代理暂不可用。请按安装说明完成依赖安装。", true, 0);
-    }
+    initializeMediaTools();
   }
+
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }
 }());

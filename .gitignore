@@ -26,6 +26,7 @@ artifacts/
 release/
 tmp/
 .cache/
+extension/vendor/media/
 *.ccx
 *.zxp
 
