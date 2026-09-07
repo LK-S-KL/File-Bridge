@@ -3468,8 +3468,9 @@
   }
   function syncSortFieldLabel() {
     var labels = { modified: "时间", name: "名称", size: "大小", type: "类型", duration: "时长" };
-    var label = document.querySelector(".sort-current-label");
-    if (label) { label.textContent = labels[state.preferences.sortBy] || "时间"; }
+    var hint = "排序：" + (labels[state.preferences.sortBy] || "时间");
+    elements.sortButton.title = hint;
+    elements.sortButton.setAttribute("data-hint", hint);
   }
   function syncGridZoom() {
     var size = Math.max(150, Math.min(260, Number(state.preferences.zoom) || 190));

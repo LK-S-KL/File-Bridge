@@ -104,8 +104,6 @@ test("UI 4.3 toolbar keeps the designed control groups", () => {
   assert.match(html, /id="listModeButton"/);
   assert.match(html, /id="toolbarExportButton"/);
   assert.match(html, /id="previewDock"/);
-  assert.match(uiCss, /\.toolbar-left #filterButton\s*\{[^}]*flex:\s*0 0 auto/s);
-  assert.match(uiCss, /\.toolbar-left \.sort-trigger\s*\{[^}]*min-width:\s*72px/s);
   assert.match(uiCss, /\.ui-icon\[data-icon="download"\]/);
   assert.match(uiCss, /\.preview-dock\s*\{/);
 });

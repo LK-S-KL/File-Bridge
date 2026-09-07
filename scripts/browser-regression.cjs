@@ -50,10 +50,22 @@ const server = http.createServer((req,res)=>{
       lkTest.injectStore(null);return {writes,ms:performance.now()-start,count:Object.keys(snapshot.assetMeta).length};
     });
     assert.equal(bulk.writes,1);assert.equal(bulk.count,1000);results.push({test:'1000 metadata one transaction',...bulk});
-    for(const width of [300,320,390,736,1200]){
+    for(const width of [280,300,320,390,520,600,736,1200]){
       await page.setViewportSize({width,height:800});await page.waitForTimeout(80);
       const geometry=await page.evaluate(()=>{const ids=['resultActionsButton','selectAllButton','locationsToolbarButton'];return {width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,buttons:ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {id,left:r.left,right:r.right};})};});
       assert.equal(geometry.overflow,false);geometry.buttons.forEach(b=>assert.ok(b.left>=0 && b.right<=width));results.push(geometry);
+      const toolbar=await page.evaluate(()=>{
+        const ids=['inlineSearchField','favoriteOnlyButton','sortButton','filterButton','viewModeButton','listModeButton','cardStyleButton','zoomControl','toolbarExportButton'];
+        return {height:document.querySelector('.toolbar').getBoundingClientRect().height,items:ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {id,left:r.left,right:r.right,cy:r.top+r.height/2};}),divider:document.querySelector('.toolbar-divider').getBoundingClientRect().toJSON()};
+      });
+      assert.equal(toolbar.height,54);
+      toolbar.items.forEach((item,index)=>{
+        assert.ok(item.left>=0 && item.right<=width,JSON.stringify({width,item}));
+        assert.ok(Math.abs(item.cy-toolbar.items[0].cy)<1,JSON.stringify({width,item}));
+        if(index)assert.ok(item.left>=toolbar.items[index-1].right,JSON.stringify({width,item}));
+      });
+      assert.ok(toolbar.divider.left>=toolbar.items[3].right && toolbar.divider.right<=toolbar.items[4].left);
+      if([300,600,1200].includes(width))await page.locator('.toolbar').screenshot({path:path.join(output,'toolbar-'+width+'.png')});
     }
     await page.setViewportSize({width:736,height:800});
     await page.locator('#listModeButton').click();assert.equal(await page.locator('#cardStyleButton').isDisabled(),true);
