@@ -1,4 +1,4 @@
-# Rove
+# File Bridge
 
 File Bridge 是面向 Adobe Premiere Pro 25.0 与 After Effects 25.0 的飞牛 NAS 素材面板。当前版本直接读取已经挂载到 Mac 的 SMB 文件夹。
 
