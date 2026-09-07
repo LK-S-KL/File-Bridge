@@ -72,18 +72,28 @@ After Effects 没有可靠的扩展面板文件拖入协议，因此 AE 中卡�
 
 ## 内测分发
 
-运行：
+当前 Release 仅提供 **macOS** 安装包，**Windows 暂不支持**。ZIP 与 DMG 是同一套
+Mac 文件的两种封装，不是两种操作系统版本。M 系列与 Intel 共用插件脚本，但须准备
+匹配处理器的 `ffmpeg` 和 `ffprobe`；Intel 和多 Adobe 版本仍需实机验收。
+
+同事安装请先阅读 [完整安装说明](packaging/README-INTERNAL.txt)，再从
+[Release 附件](https://github.com/LK-S-KL/File-Bridge/releases/tag/v0.6.7-internal)
+选择带 `macOS-install-r2` 的 ZIP 或 DMG，不要下载自动生成的 Source code。
+操作系统、Adobe 版本及未验证范围见 [安装兼容性核查](docs/INSTALLATION_COMPATIBILITY.md)。
+
+这是未签名、未公证的 CEP 内测包，不是零依赖安装器。安装脚本验证媒体依赖后，
+为当前用户开启 CSXS 12 的 PlayerDebugMode，并将旧扩展移到 CEP 扫描目录之外备份。
+用户须先保存工程并退出 Adobe，安装后重新打开 Adobe 软件。
+
+开发者从当前代码构建新版本：
 
 ```bash
 npm run package:internal
 ```
 
-脚本会在桌面生成：
-
-- `LK‘s File Bridge 0.6.2 v0.6迭代内测.dmg`
-- `LK‘s File Bridge 0.6.2 v0.6迭代内测.zip`
-
-这是未签名 CEP 内测包。给同事时优先发送 DMG；双击后运行“安装 LK‘s File Bridge.command”，再重启 Adobe 软件。安装脚本会自动开启 CSXS 12 的 PlayerDebugMode，并在覆盖旧版本前保留带时间戳的备份。
+脚本使用 `package.json` 的版本号在桌面生成 ZIP / DMG，不覆盖已存在的同版本产物。
+0.6.7 的 `install-r2` 使用 `scripts/repackage-release-docs.cjs` 从原 Release ZIP
+修订文档，验证插件与脚本字节不变，不包含发布标签之后的程序改动。
 
 ## 开发检查
 
